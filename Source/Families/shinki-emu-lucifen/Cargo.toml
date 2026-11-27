@@ -19,7 +19,10 @@ roukaku-text.workspace = true
 tempfile.workspace = true
 time = { workspace = true, features = ["local-offset"] }
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", features = ["diagnostic-bridge"] }
-shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["runtime", "text", "device-audio", "audio"] }
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["runtime", "text", "audio"] }
+
+[target.'cfg(not(target_env = "ohos"))'.dependencies]
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["device-audio"] }
 
 [build-dependencies]
 shinki-emu-build = { path = "../../Tools/shinki-emu-build" }

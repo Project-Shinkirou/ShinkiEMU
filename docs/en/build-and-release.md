@@ -70,9 +70,10 @@ For native builds, install Xcode, select it with `xcode-select` and accept its l
 
 The iOS Manager's embedded [KrKr2](cores/krkr2.md) also needs `rustup component add llvm-tools-preview`.
 
-On macOS, the Cargo build helper applies the repository's Boost.Locale
-1.88.0#1 CMake backport when building KiriKiri. The overlay does not change
-the Boost version or affect other cores or iOS.
+On macOS, the KiriKiri adapter requests the Boost.Locale 1.88.0#1
+CMake backport for its vcpkg baseline. iOS core builds use the separate
+Boost.Locale 1.91.0 overlay for the same CMake fix, preserving the Boost
+source version used by KrKr2's iOS dependencies.
 
 For a Linux-hosted Apple build, install Docker with Buildx, cross 0.2.5 and apple-codesign 0.29.0 (`rcodesign`). Find the matching `macosx`, `iphoneos` or `iphonesimulator` SDK from [Xcode](https://developer.apple.com/download/all/) on macOS via `xcrun --sdk <sdk> --show-sdk-path`. Transfer it privately. Point `SHINKI_APPLE_SDK_DIR` to the extracted SDK directory containing `SDKSettings.json`, `System/` and `usr/`, then build the image for the selected triple. Keep SDKs and SDK images private.
 

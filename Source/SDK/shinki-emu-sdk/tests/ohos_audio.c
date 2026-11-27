@@ -4,6 +4,7 @@
    The test drives only the renderer callbacks and presentation position.
    Queue, clock, drain and cancellation all use the production code. */
 #include <assert.h>
+#include <math.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -84,7 +85,7 @@ OH_AudioStream_Result OH_AudioStreamBuilder_SetChannelCount(OH_AudioStreamBuilde
 }
 
 OH_AudioStream_Result OH_AudioStreamBuilder_SetSampleFormat(OH_AudioStreamBuilder *builder, OH_AudioStream_SampleFormat format) {
-    assert(builder && format == AUDIOSTREAM_SAMPLE_F32LE);
+    assert(builder && format == AUDIOSTREAM_SAMPLE_S32LE);
     return AUDIOSTREAM_SUCCESS;
 }
 
@@ -126,8 +127,9 @@ OH_AudioStream_Result OH_AudioRenderer_Release(OH_AudioRenderer *renderer) {
     return AUDIOSTREAM_SUCCESS;
 }
 
-OH_AudioStream_Result OH_AudioRenderer_GetAudioTimestampInfo(OH_AudioRenderer *renderer,
+OH_AudioStream_Result OH_AudioRenderer_GetTimestamp(OH_AudioRenderer *renderer, clockid_t clock,
     int64_t *position, int64_t *timestamp) {
+    assert(clock == CLOCK_MONOTONIC);
     *position = atomic_load(&renderer->position);
     *timestamp = *position + 1;
     return AUDIOSTREAM_SUCCESS;
@@ -139,10 +141,10 @@ static ShinkiAudioStream *open_stream(uint32_t stall_ms) {
     return stream;
 }
 
-static void render(ShinkiAudioStream *stream, float *out, size_t count) {
+static void render(ShinkiAudioStream *stream, int32_t *out, size_t count) {
     OH_AudioRenderer *renderer = stream->renderer;
     assert(renderer->callbacks.OH_AudioRenderer_OnWriteData(renderer, renderer->user,
-        out, (int32_t)(count * sizeof(float))) == 0);
+        out, (int32_t)(count * sizeof(*out))) == 0);
 }
 
 static uint64_t played(ShinkiAudioStream *stream, uint64_t accepted) {
@@ -184,16 +186,18 @@ static void finish_waiter(struct operation *op, pthread_t worker, int result) {
 
 static void presentation_excludes_underrun_and_drain_waits_for_tail(void) {
     ShinkiAudioStream *stream = open_stream(500);
-    const float first[] = {0.1f, 0.2f, 0.3f, 0.4f};
-    const float next[] = {0.5f, 0.6f};
-    float out[8] = {0};
+    const float first[] = {0.25f, -0.25f, 0.125f, -0.125f};
+    const float next[] = {0.5f, -0.5f};
+    const int32_t first_pcm[] = {536870912, -536870912, 268435456, -268435456, 0, 0, 0, 0};
+    const int32_t next_pcm[] = {1073741824, -1073741824, 0, 0, 0, 0, 0, 0};
+    int32_t out[8];
     render(stream, out, 8); // Four frames of startup silence.
     assert(shinki_ohos_audio_write(stream, first, 4) == 0);
     render(stream, out, 8); // Two source frames followed by two zero frames.
-    assert(memcmp(out, first, sizeof(first)) == 0 && out[4] == 0.0f && out[7] == 0.0f);
+    assert(memcmp(out, first_pcm, sizeof(out)) == 0);
     assert(shinki_ohos_audio_write(stream, next, 2) == 0);
     render(stream, out, 8); // Last source frame followed by three zero frames.
-    assert(memcmp(out, next, sizeof(next)) == 0 && out[2] == 0.0f && out[7] == 0.0f);
+    assert(memcmp(out, next_pcm, sizeof(out)) == 0);
     atomic_store(&stream->renderer->position, 4);
     assert(played(stream, 3) == 0);
     atomic_store(&stream->renderer->position, 5);
@@ -208,6 +212,26 @@ static void presentation_excludes_underrun_and_drain_waits_for_tail(void) {
     finish_waiter(&op, worker, 0);
     atomic_store(&stream->renderer->position, 12);
     assert(played(stream, 3) == 3);
+    shinki_ohos_audio_close(stream);
+}
+
+static void signed_pcm_saturates_without_mutating_source_and_wraps(void) {
+    ShinkiAudioStream *stream = open_stream(0);
+    const float prime[(QUEUE_FRAMES - 1) * 2] = {0};
+    int32_t scratch[(QUEUE_FRAMES - 1) * 2];
+    assert(shinki_ohos_audio_write(stream, prime, sizeof(prime) / sizeof(*prime)) == 0);
+    render(stream, scratch, sizeof(scratch) / sizeof(*scratch));
+
+    float samples[] = {1.0f, -1.0f, INFINITY, -INFINITY, NAN, -0.0f, 2.0f, -2.0f,
+                       0x1.fffffep-1f, -0x1.fffffep-1f};
+    float original[sizeof(samples) / sizeof(*samples)];
+    memcpy(original, samples, sizeof(samples));
+    const int32_t expected[] = {INT32_MAX, INT32_MIN, INT32_MAX, INT32_MIN, 0, 0,
+                                INT32_MAX, INT32_MIN, 2147483520, -2147483520};
+    assert(shinki_ohos_audio_write(stream, samples, sizeof(samples) / sizeof(*samples)) == 0);
+    render(stream, scratch, sizeof(expected) / sizeof(*expected));
+    assert(memcmp(samples, original, sizeof(samples)) == 0);
+    assert(memcmp(scratch, expected, sizeof(expected)) == 0);
     shinki_ohos_audio_close(stream);
 }
 
@@ -233,7 +257,8 @@ static void clock_stall_surfaces_while_renderer_still_asks_for_pcm(void) {
     ShinkiAudioStream *stream = open_stream(10);
     float frame[] = {0.1f, 0.2f};
     assert(shinki_ohos_audio_write(stream, frame, 2) == 0);
-    render(stream, frame, 2);
+    int32_t output[2];
+    render(stream, output, 2);
     const struct timespec stall = {.tv_nsec = 20000000};
     nanosleep(&stall, NULL);
     assert(shinki_ohos_audio_write(stream, frame, 2) == AUDIO_STALLED);
@@ -243,10 +268,11 @@ static void clock_stall_surfaces_while_renderer_still_asks_for_pcm(void) {
 
 int main(void) {
     presentation_excludes_underrun_and_drain_waits_for_tail();
+    signed_pcm_saturates_without_mutating_source_and_wraps();
     interrupt_wait(false, false);
     interrupt_wait(true, false);
     interrupt_wait(false, true);
     interrupt_wait(true, true);
     clock_stall_surfaces_while_renderer_still_asks_for_pcm();
-    puts("OHAudio presenter, audible drain, cancellation, errors and stall: passed");
+    puts("OHAudio signed PCM, audible drain, cancellation, errors and stall: passed");
 }

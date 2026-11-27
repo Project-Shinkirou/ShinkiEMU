@@ -1,15 +1,8 @@
 use crate::{Game, Graphics, NativeCall, Step, Word};
 use roukaku_text::{LayoutLine, LogicalTextLayout};
-use std::{
-    collections::BTreeMap,
-    io,
-    path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{collections::BTreeMap, io, path::Path, sync::Arc};
 
+use crate::sound::{AudioControl, Channels, Output};
 use crate::text::{Font, Text};
 
 pub struct Host {
@@ -50,10 +43,9 @@ pub struct Host {
     slot_checkpoint: Option<Vec<u8>>,
     thumbnail_conditions: [Option<crate::Address>; 2],
     thumbnail_surface: Option<i32>,
-    audio: Option<shinki_emu_sdk::NativeAudioOutput>,
-    audio_stop: Arc<AtomicBool>,
-    null_audio: bool,
-    channels: crate::sound::Channels,
+    audio: Option<Output>,
+    audio_control: AudioControl,
+    channels: Channels,
     voices: Option<crate::voice::Voices>,
     random: crate::random::Random,
 }
@@ -112,9 +104,8 @@ impl Host {
             thumbnail_conditions: [None, None],
             thumbnail_surface: None,
             audio: None,
-            audio_stop: Arc::new(AtomicBool::new(false)),
-            null_audio: false,
-            channels: crate::sound::Channels::default(),
+            audio_control: AudioControl::default(),
+            channels: Channels::default(),
             voices,
             random: crate::random::Random::seeded(
                 (std::time::SystemTime::now()
@@ -141,7 +132,7 @@ impl Host {
             self.input.next_tick();
             if let Some(audio) = &mut self.audio {
                 self.channels
-                    .mix(self.timers.now(), audio, &self.audio_stop)?;
+                    .mix(self.timers.now(), audio, &self.audio_control.stop)?;
             }
         }
         let Step::Calling(call) = step else {
@@ -164,9 +155,13 @@ impl Host {
         &self.game
     }
 
-    pub(crate) fn configure_audio(&mut self, stop: Arc<AtomicBool>, null_audio: bool) {
-        self.audio_stop = stop;
-        self.null_audio = null_audio;
+    pub(crate) fn configure_audio(&mut self, audio: AudioControl) {
+        self.audio_control = audio;
+    }
+
+    #[cfg(target_env = "ohos")]
+    pub(crate) fn drain_audio(&self) -> io::Result<()> {
+        self.audio.as_ref().map_or(Ok(()), Output::drain)
     }
 
     pub(crate) fn receive_input(&mut self, input: Vec<shinki_emu_sdk::runtime::RuntimeEvent>) {
@@ -1987,12 +1982,7 @@ impl Host {
                     return Ok(None);
                 }
                 if self.audio.is_none() {
-                    let output = if self.null_audio {
-                        shinki_emu_sdk::NativeAudioOutput::open_null()
-                    } else {
-                        shinki_emu_sdk::NativeAudioOutput::open(self.audio_stop.clone())
-                    };
-                    self.audio = Some(output.map_err(io::Error::other)?);
+                    self.audio = Some(Output::open(&self.audio_control)?);
                 }
                 0
             }
@@ -2074,11 +2064,11 @@ impl Host {
                             overlap,
                             volume,
                         },
-                        &self.audio_stop,
+                        &self.audio_control.stop,
                     )
                 } else {
                     self.channels
-                        .play_music(source, mode != 0, fade_ms, &self.audio_stop)
+                        .play_music(source, mode != 0, fade_ms, &self.audio_control.stop)
                 }
             }
             651 => {
@@ -2127,7 +2117,7 @@ impl Host {
                     }
                     Err(error) => return Err(error),
                 };
-                self.channels.load(id, &bytes, &self.audio_stop)
+                self.channels.load(id, &bytes, &self.audio_control.stop)
             }
             667 => {
                 let id = self.arg(call, 0)?.integer()?;
@@ -2878,7 +2868,7 @@ impl Host {
                 Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(2),
                 Err(error) => return Err(error),
             };
-            if self.channels.load(id, &bytes, &self.audio_stop) != 0 {
+            if self.channels.load(id, &bytes, &self.audio_control.stop) != 0 {
                 return Ok(2);
             }
         }
@@ -3497,7 +3487,11 @@ impl Host {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(-4),
             Err(error) => return Err(error),
         };
-        if self.channels.load(channel, &bytes, &self.audio_stop) != 0 {
+        if self
+            .channels
+            .load(channel, &bytes, &self.audio_control.stop)
+            != 0
+        {
             return Ok(-4);
         }
         self.channels.volume(channel, -1, gain);
@@ -4514,7 +4508,7 @@ impl Host {
 
 impl Drop for Host {
     fn drop(&mut self) {
-        self.audio_stop.store(true, Ordering::Release);
+        self.audio_control.cancel();
     }
 }
 

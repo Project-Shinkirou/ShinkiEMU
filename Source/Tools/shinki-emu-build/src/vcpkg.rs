@@ -89,15 +89,22 @@ fn core_ports(
     let source_overlay = source.join("vcpkg/ports");
     let has_source_overlay = source_overlay.is_dir();
     let config = || workspace.join("build/vcpkg");
-    let android = target.ends_with("-linux-android");
-    let mut ports =
-        Vec::with_capacity(overlays.len() + usize::from(android) + usize::from(has_source_overlay));
+    let platform_overlay = if target.ends_with("-linux-android") {
+        Some("mobile-ports")
+    } else if target.ends_with("-apple-ios") || target.ends_with("-apple-ios-sim") {
+        Some("ios-ports")
+    } else {
+        None
+    };
+    let mut ports = Vec::with_capacity(
+        overlays.len() + usize::from(platform_overlay.is_some()) + usize::from(has_source_overlay),
+    );
     ports.extend(overlays.iter().map(|overlay| match overlay {
         PortOverlay::Workspace(path) => config().join(path),
         PortOverlay::Vcpkg(path) => root.join(path),
     }));
-    if android {
-        ports.push(config().join("mobile-ports"));
+    if let Some(path) = platform_overlay {
+        ports.push(config().join(path));
     }
     if has_source_overlay {
         ports.push(source_overlay);
@@ -570,6 +577,7 @@ mod tests {
         let config = workspace.join("build/vcpkg");
         let mobile = config.join("mobile-ports");
         let apple = config.join("apple-ports");
+        let ios = config.join("ios-ports");
         let libass = root.join("ports/libass");
         for (target, overlays, expected) in [
             (
@@ -584,7 +592,9 @@ mod tests {
                 vec![&apple, &source_overlay],
             ),
             ("aarch64-apple-darwin", &[], vec![&source_overlay]),
-            ("aarch64-apple-ios", &[], vec![&source_overlay]),
+            ("aarch64-apple-ios", &[], vec![&ios, &source_overlay]),
+            ("aarch64-apple-ios-sim", &[], vec![&ios, &source_overlay]),
+            ("x86_64-apple-ios", &[], vec![&ios, &source_overlay]),
         ] {
             let ports = core_ports(workspace, root, source, target, overlays);
             let command = install_command(
@@ -608,15 +618,15 @@ mod tests {
                 "{target}"
             );
         }
-        assert!(
+        assert_eq!(
             core_ports(
                 workspace,
                 root,
                 &source.join("absent"),
                 "aarch64-apple-ios",
                 &[]
-            )
-            .is_empty()
+            ),
+            vec![ios],
         );
         Ok(())
     }

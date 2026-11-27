@@ -1,4 +1,4 @@
-use crate::{Host, Step, Surface};
+use crate::{Host, Step, Surface, sound::AudioControl};
 use shinki_emu_abi as abi;
 use shinki_emu_lucifen_formats::FORMAT_ID;
 use shinki_emu_sdk::{
@@ -22,12 +22,16 @@ use std::{
 const PLUGIN_ID: &str = "shinki.emu.lucifen";
 const FORMATS: &[abi::Bytes] = &[abi::Bytes::from_static(FORMAT_ID.as_bytes())];
 const TEXT_ENCODING: &str = "text_encoding";
+#[cfg(not(target_env = "ohos"))]
 const HEADLESS_AUDIO_DEVICE: &str = "headless_audio_device";
+#[cfg(not(target_env = "ohos"))]
 const NULL_AUDIO_DEVICE: &str = "nullaudiodevice";
+#[cfg(not(target_env = "ohos"))]
 const AUDIO_DEVICES: &[abi::Bytes] = &[
     abi::Bytes::from_static(b"native"),
     abi::Bytes::from_static(NULL_AUDIO_DEVICE.as_bytes()),
 ];
+#[cfg(not(target_env = "ohos"))]
 const AUDIO_DEVICE_LABELS: &[abi::Bytes] = &[
     abi::Bytes::from_static(b"Native audio"),
     abi::Bytes::from_static(b"Clocked null audio (test only)"),
@@ -60,6 +64,7 @@ const CONFIGURATION: &[abi::ConfigField] = &[
         step: 0.0,
         unit: abi::Bytes::EMPTY,
     },
+    #[cfg(not(target_env = "ohos"))]
     abi::ConfigField {
         id: abi::Bytes::from_static(HEADLESS_AUDIO_DEVICE.as_bytes()),
         label: abi::Bytes::from_static(b"Headless audio device"),
@@ -287,11 +292,18 @@ fn surface_info(width: u32, height: u32) -> abi::SurfaceInfo {
 
 struct Shared {
     services: ServiceContext,
-    audio_stop: Arc<AtomicBool>,
+    audio: AudioControl,
     published: Mutex<Option<Published>>,
     surface: OnceLock<abi::SurfaceInfo>,
     leases: Arc<AtomicUsize>,
     state: Mutex<abi::SessionState>,
+}
+
+impl Shared {
+    fn cancel(&self) {
+        self.services.cancel();
+        self.audio.cancel();
+    }
 }
 
 enum Command {
@@ -307,9 +319,9 @@ struct Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        self.shared.services.cancel();
-        self.shared.audio_stop.store(true, Ordering::Release);
+        self.shared.cancel();
         if let Some(worker) = self.worker.take() {
+            worker.thread().unpark();
             let _ = worker.join();
         }
     }
@@ -344,10 +356,12 @@ unsafe extern "C" fn open(
         let configuration =
             unsafe { native::config_entries(descriptor(), request) }.map_err(failure)?;
         let mut encoding = None;
+        #[cfg(not(target_env = "ohos"))]
         let mut null_audio = false;
         for entry in configuration {
             match (entry.id.as_str(), entry.value) {
                 (TEXT_ENCODING, ConfigValue::String(value)) => encoding = Some(value),
+                #[cfg(not(target_env = "ohos"))]
                 (HEADLESS_AUDIO_DEVICE, ConfigValue::Enum(device)) => {
                     null_audio = device == NULL_AUDIO_DEVICE;
                 }
@@ -357,6 +371,13 @@ unsafe extern "C" fn open(
         if !matches!(encoding.as_deref(), None | Some("cp932" | "gbk")) {
             return Err(failure(abi::INVALID_ARGUMENT));
         }
+        let audio = AudioControl::default();
+        #[cfg(not(target_env = "ohos"))]
+        let audio = {
+            let mut audio = audio;
+            audio.null_device = null_audio;
+            audio
+        };
         let root = PathBuf::from(unsafe { request.game_path.text(32768) }.map_err(failure)?);
         let shared = Arc::new(Shared {
             services: ServiceContext {
@@ -368,7 +389,7 @@ unsafe extern "C" fn open(
                 window: None,
                 host_cancel: Some(request.host.cancellation),
             },
-            audio_stop: Arc::new(AtomicBool::new(false)),
+            audio,
             published: Mutex::default(),
             surface: OnceLock::new(),
             leases: Arc::new(AtomicUsize::new(0)),
@@ -390,7 +411,6 @@ unsafe extern "C" fn open(
                     run(
                         &root,
                         encoding.as_deref().unwrap_or("cp932"),
-                        null_audio,
                         &worker_state,
                         &ready,
                         receiver,
@@ -439,14 +459,13 @@ unsafe extern "C" fn open(
 fn run(
     root: &Path,
     encoding: &str,
-    null_audio: bool,
     shared: &Shared,
     ready: &SyncSender<Result<abi::SurfaceInfo, NativeFailure>>,
     commands: Receiver<Command>,
 ) -> Result<(), NativeFailure> {
     let mut host = Host::open(root).map_err(runtime_error)?;
     host.set_text_encoding(encoding).map_err(runtime_error)?;
-    host.configure_audio(shared.audio_stop.clone(), null_audio);
+    host.configure_audio(shared.audio.clone());
     let (width, height) = host.display_size();
     let info = surface_info(width, height);
     info.validate().map_err(failure)?;
@@ -512,6 +531,8 @@ fn run(
                                 "Lucifen exited before presenting a frame",
                             ));
                         }
+                        #[cfg(target_env = "ohos")]
+                        host.drain_audio().map_err(runtime_error)?;
                         return Ok(());
                     }
                     Step::Calling(call) => {
@@ -674,8 +695,7 @@ unsafe extern "C" fn frame(
 unsafe extern "C" fn cancel(session: abi::Session) {
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if let Ok(session) = unsafe { borrow_session(session) } {
-            session.shared.services.cancel();
-            session.shared.audio_stop.store(true, Ordering::Release);
+            session.shared.cancel();
             if let Some(worker) = &session.worker {
                 worker.thread().unpark();
             }

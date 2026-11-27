@@ -1,6 +1,14 @@
 use std::{io, sync::atomic::AtomicBool};
 
-const OUTPUT_RATE: f64 = 48_000.0;
+mod output;
+#[cfg(any(target_env = "ohos", test))]
+mod presentation;
+
+pub(crate) use output::{AudioControl, Output};
+#[cfg(target_env = "ohos")]
+use presentation::{PlaybackSpan, Presentation};
+
+const OUTPUT_RATE: u32 = 48_000;
 const MAX_DECODED_FRAMES: usize = 48_000 * 300;
 const CHANNEL_HANDLE: i32 = 0x4000_0000;
 const MUSIC_HANDLE: i32 = CHANNEL_HANDLE | 256;
@@ -34,6 +42,8 @@ struct Channel {
     finished: bool,
     fade: Option<Fade>,
     delay: u64,
+    #[cfg(target_env = "ohos")]
+    presentation: Presentation,
 }
 
 impl Default for Channel {
@@ -52,6 +62,8 @@ impl Default for Channel {
             finished: false,
             fade: None,
             delay: 0,
+            #[cfg(target_env = "ohos")]
+            presentation: Presentation::default(),
         }
     }
 }
@@ -63,12 +75,31 @@ impl Channel {
         self.playing = self.clip.is_some();
         self.finished = false;
         self.fade = None;
+        #[cfg(target_env = "ohos")]
+        self.presentation.reset();
     }
 
     fn stop(&mut self) {
         self.playing = false;
         self.position = 0.0;
         self.fade = None;
+        #[cfg(target_env = "ohos")]
+        self.presentation.reset();
+    }
+
+    fn has_unpresented_audio(&self) -> bool {
+        #[cfg(target_env = "ohos")]
+        {
+            self.presentation.pending()
+        }
+        #[cfg(not(target_env = "ohos"))]
+        {
+            false
+        }
+    }
+
+    fn audibly_playing(&self) -> bool {
+        self.playing || (self.finished && self.has_unpresented_audio())
     }
 }
 
@@ -81,6 +112,7 @@ pub(crate) struct Channels {
     crossfade: bool,
     music_identity: Option<(String, Option<String>)>,
     previous_ms: Option<u32>,
+    mix_buffer: Vec<f32>,
 }
 
 pub(crate) struct Crossfade {
@@ -177,6 +209,8 @@ impl Channels {
         channel.position = 0.0;
         channel.finished = false;
         channel.fade = None;
+        #[cfg(target_env = "ohos")]
+        channel.presentation.reset();
         match shinki_emu_sdk::decode_audio(bytes, MAX_DECODED_FRAMES, stop) {
             Ok(clip) => {
                 channel.clip = Some(clip);
@@ -191,6 +225,8 @@ impl Channels {
             channel.clip = None;
             channel.playing = false;
             channel.finished = false;
+            #[cfg(target_env = "ohos")]
+            channel.presentation.reset();
             channel.position = 0.0;
             channel.fade = None;
         }
@@ -289,7 +325,7 @@ impl Channels {
 
     pub(crate) fn handle_playing(&self, handle: i32) -> bool {
         self.channel_for_handle(handle)
-            .is_some_and(|channel| channel.playing)
+            .is_some_and(Channel::audibly_playing)
     }
 
     pub(crate) fn set_handle_gain(&mut self, handle: i32, gain: i32) -> i32 {
@@ -323,6 +359,10 @@ impl Channels {
         self.channel_for_handle(handle)
             .and_then(|channel| {
                 let clip = channel.clip.as_ref()?;
+                #[cfg(target_env = "ohos")]
+                if !total {
+                    return Some(channel.presentation.time_ms);
+                }
                 let count = if total {
                     clip.frames.len() as f64
                 } else {
@@ -348,17 +388,17 @@ impl Channels {
     pub(crate) fn playing(&self, id: i32) -> bool {
         self.slots
             .get(id as usize)
-            .is_some_and(|channel| channel.playing)
+            .is_some_and(Channel::audibly_playing)
     }
 
     pub(crate) fn finished(&self, id: i32) -> bool {
         self.slots
             .get(id as usize)
-            .is_some_and(|channel| channel.finished)
+            .is_some_and(|channel| channel.finished && !channel.has_unpresented_audio())
     }
 
     pub(crate) fn music_is_playing(&self, name: &str, intro: Option<&str>) -> bool {
-        self.music.playing
+        self.music.audibly_playing()
             && self
                 .music_identity
                 .as_ref()
@@ -491,7 +531,7 @@ impl Channels {
                 .as_ref()
                 .map_or(0, |fade| 2 + i32::from(fade.stop_when_done))
         } else {
-            i32::from(self.music.playing)
+            i32::from(self.music.audibly_playing())
         }
     }
 
@@ -504,18 +544,48 @@ impl Channels {
             || self.slots.iter().any(|channel| channel.playing)
     }
 
+    #[cfg(target_env = "ohos")]
+    fn present(&mut self, output: &Output) -> io::Result<u64> {
+        let progress = output.progress()?;
+        for channel in self
+            .slots
+            .iter_mut()
+            .chain(std::iter::once(&mut self.music))
+            .chain(self.fading_music.iter_mut())
+        {
+            channel.presentation.present(progress.played_frames);
+        }
+        self.retire_fade();
+        Ok(progress.accepted_frames)
+    }
+
+    fn retire_fade(&mut self) {
+        if self
+            .fading_music
+            .as_ref()
+            .is_some_and(|channel| !channel.audibly_playing())
+        {
+            self.fading_music = None;
+        }
+        self.crossfade &= self.fading_music.is_some() || self.music.fade.is_some();
+    }
+
     pub(crate) fn mix(
         &mut self,
         now_ms: u32,
-        output: &mut shinki_emu_sdk::NativeAudioOutput,
+        output: &mut Output,
         stop: &AtomicBool,
     ) -> io::Result<()> {
+        #[cfg(target_env = "ohos")]
+        let submitted = self.present(output)?;
         let start = self.previous_ms.replace(now_ms).unwrap_or(now_ms);
         let frames = (now_ms.wrapping_sub(start) as usize).min(40) * 48;
         if frames == 0 || !self.any_playing() {
             return Ok(());
         }
-        let mut mix = vec![0.0f32; frames * 2];
+        let mut mix = std::mem::take(&mut self.mix_buffer);
+        mix.clear();
+        mix.resize(frames * 2, 0.0);
         for channel in self
             .slots
             .iter_mut()
@@ -529,7 +599,9 @@ impl Channels {
             let volume = channel.volume as f32 * channel.gain as f32 / 25_600.0;
             let left = 10.0_f32.powf(-channel.pan.max(0) as f32 / 2000.0);
             let right = 10.0_f32.powf(channel.pan.min(0) as f32 / 2000.0);
-            for frame in mix.chunks_exact_mut(2) {
+            #[cfg(target_env = "ohos")]
+            let (mut span, mut mixed_until): (Option<PlaybackSpan>, _) = (None, 0);
+            for (_offset, frame) in mix.chunks_exact_mut(2).enumerate() {
                 if channel.delay != 0 {
                     channel.delay -= 1;
                     continue;
@@ -538,6 +610,10 @@ impl Channels {
                 let index = channel.position as usize;
                 if index >= clip.frames.len() {
                     if let Some(next) = channel.following.take() {
+                        #[cfg(target_env = "ohos")]
+                        if let Some(span) = span.take() {
+                            channel.presentation.push(span, submitted + _offset as u64);
+                        }
                         let tail = (channel.position - clip.frames.len() as f64)
                             / f64::from(clip.sample_rate);
                         channel.position = (tail * f64::from(next.sample_rate))
@@ -554,6 +630,19 @@ impl Channels {
                 }
                 let clip = channel.clip.as_ref().unwrap();
                 let index = channel.position as usize;
+                let step = f64::from(clip.sample_rate) / f64::from(OUTPUT_RATE) * channel.speed;
+                #[cfg(target_env = "ohos")]
+                {
+                    span.get_or_insert_with(|| PlaybackSpan {
+                        begin: submitted + _offset as u64,
+                        position: channel.position,
+                        step,
+                        sample_rate: clip.sample_rate,
+                        length: clip.frames.len(),
+                        loops: channel.repeat && channel.following.is_none(),
+                    });
+                    mixed_until = _offset + 1;
+                }
                 let weight = (channel.position - index as f64) as f32;
                 let a = clip.frames[index];
                 let b = clip
@@ -582,30 +671,38 @@ impl Channels {
                 };
                 frame[0] += (a.left + (b.left - a.left) * weight) * volume * left;
                 frame[1] += (a.right + (b.right - a.right) * weight) * volume * right;
-                channel.position += f64::from(clip.sample_rate) / OUTPUT_RATE * channel.speed;
+                channel.position += step;
+                // EOF between blocks is also recorded below.
                 if !channel.playing {
                     break;
                 }
             }
+            #[cfg(target_env = "ohos")]
+            if let Some(span) = span {
+                if !channel.repeat
+                    && channel.following.is_none()
+                    && channel.position >= span.length as f64
+                {
+                    channel.playing = false;
+                    channel.finished = true;
+                    channel.fade = None;
+                }
+                channel
+                    .presentation
+                    .push(span, submitted + mixed_until as u64);
+            }
         }
-        if self
-            .fading_music
-            .as_ref()
-            .is_some_and(|channel| !channel.playing)
-        {
-            self.fading_music = None;
-        }
-        self.crossfade &= self.fading_music.is_some() || self.music.fade.is_some();
+        self.retire_fade();
         for sample in &mut mix {
             *sample = sample.clamp(-1.0, 1.0);
         }
-        output
-            .write(mix, stop)
-            .map_err(|_| io::Error::other("Lucifen audio output failed"))?;
+        let Some(buffer) = output.write(mix, stop)? else {
+            return Ok(());
+        };
+        self.mix_buffer = buffer;
+        #[cfg(not(target_env = "ohos"))]
         if !self.any_playing() {
-            output
-                .flush(stop)
-                .map_err(|_| io::Error::other("Lucifen audio output flush failed"))?;
+            output.flush(stop)?;
         }
         Ok(())
     }
@@ -627,6 +724,21 @@ mod tests {
             slice: None,
         });
         channels.music.position = 150.0;
+        #[cfg(target_env = "ohos")]
+        {
+            channels.music.presentation.push(
+                PlaybackSpan {
+                    begin: 0,
+                    position: 0.0,
+                    step: 1.0 / 48.0,
+                    sample_rate: 1_000,
+                    length: 400,
+                    loops: false,
+                },
+                7200,
+            );
+            channels.music.presentation.present(7200);
+        }
         channels.music.playing = true;
 
         let handle = channels.music_handle();
