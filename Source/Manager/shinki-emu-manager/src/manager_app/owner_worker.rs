@@ -1,6 +1,4 @@
-use super::owner::{
-    BackgroundEvent, BackgroundSender, Command, Commands, PrepareProgress, Update, collect_metadata,
-};
+use super::owner::{BackgroundEvent, BackgroundSender, Command, Commands, Update, collect_metadata};
 use super::*;
 use crossbeam_channel::RecvTimeoutError;
 use parking_lot::Mutex;

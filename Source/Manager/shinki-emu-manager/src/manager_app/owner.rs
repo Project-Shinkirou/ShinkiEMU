@@ -271,6 +271,7 @@ impl FamilyOwner {
         self.metadata.get(id).map(|meta| &meta.descriptor)
     }
 
+    #[cfg(test)]
     pub(super) fn descriptors(&self) -> impl Iterator<Item = &FamilyPluginDescriptor> {
         self.metadata.values().map(|meta| &meta.descriptor)
     }
