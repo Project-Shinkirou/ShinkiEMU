@@ -29,8 +29,6 @@ shinki-emu-headless compare --actual artifacts/compare/frame-000180.png --baseli
 
 独立运行器和桌面端的 `shinki-emu-manager headless` 都通过 `--core` 接收核心 ZIP、解压目录或动态库路径。用 `--no-default-features` 构建独立运行器可省去 Manager 界面；Manager 的界面截图命令是 `headless-ui`。
 
-本地兼容构建仍可开启已弃用的 `static-cmvs` 或 `static-adv32`，并用链接的核心 ID 启动。验收独立核心包时请用 `--core <core.zip>`。
-
 运行器先把整个游戏复制到独立临时目录，再把副本路径交给核心。游戏目录内的存档与配置写入只影响副本；不把原存档目录作为可写路径传给核心。大游戏需要足够的临时空间。符号链接和特殊文件会被拒绝。核心是本机可执行代码，这不是操作系统沙箱；配置中明确指向游戏目录外的路径应改为临时路径。
 
 核心在单独子进程中启动，HOME、AppData、XDG、缓存与 TEMP 指向临时位置，原生线程启动后不再修改进程环境。核心声明字符串 `save_root` 时，运行器始终把它绑定到独立临时存档目录，覆盖传入值。输出目录不能位于源游戏内，也不能与基线目录相同。

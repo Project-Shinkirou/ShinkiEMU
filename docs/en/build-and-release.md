@@ -182,7 +182,7 @@ Manager enables `store-steam`, `store-dlsite` and `store-dmm` by default. For St
 
 ## Add or update a core pin
 
-1. Add an entry crate under `Source/Cores/<id>/`, following the closest existing entry. An in-tree Rust entry uses a path dependency and exposes the ABI query through a `cdylib`; a Rust fork entry inherits the workspace dependency and enables its standalone export feature if needed. Native adapters supply the library through a build script. The deprecated `static-cmvs` and `static-adv32` Manager features are for local compatibility only; release packaging rejects both.
+1. Add an entry crate under `Source/Cores/<id>/`, following the closest existing entry. An in-tree Rust entry uses a path dependency and exposes the ABI query through a `cdylib`; a Rust fork entry inherits the workspace dependency and enables its standalone export feature if needed. Native adapters supply the library through a build script.
 2. Declare or update the fork's `git` URL and full `rev` in root [`Cargo.toml`](../../Cargo.toml) under `[workspace.dependencies]`. `build/cores.toml` holds product metadata: IDs, licenses and notices, target support and external upstream attribution/release sequence. `adapter_licenses` paths are relative to the fork root; `licenses` paths are relative to ShinkiEMU.
 3. Run `cargo metadata --format-version 1` without `--locked` once to refresh [`Cargo.lock`](../../Cargo.lock). Review the lockfile diff for the intended additions or pin changes; avoid a blanket dependency update. Commit the manifest and lockfile together. Use `--locked` for normal builds.
 

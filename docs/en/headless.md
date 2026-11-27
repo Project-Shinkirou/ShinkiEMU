@@ -26,8 +26,6 @@ cargo clippy --locked -p shinki-emu-headless --all-targets -- -D warnings
 
 The standalone runner and desktop `shinki-emu-manager headless` both take a core ZIP, unpacked core directory or dynamic library path in `--core`. Build the standalone runner with `--no-default-features` to omit the Manager UI. Manager exposes UI snapshots through `headless-ui`.
 
-The deprecated `static-cmvs` and `static-adv32` features still accept the linked plugin ID in local compatibility builds. Use `--core <core.zip>` for package testing. Other hosts that explicitly supply linked entries to the library's `run_cli` can still use their IDs.
-
 ## Core acceptance and captures
 
 ```powershell

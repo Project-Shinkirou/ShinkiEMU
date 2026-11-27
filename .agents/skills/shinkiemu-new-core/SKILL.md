@@ -193,7 +193,7 @@ SDK 只提供公共机制，不提供游戏运行时。VM、混音规则、媒�
 
 ## 6. 注册核心
 
-`build/cores.toml` 是官方核心目录的来源：Manager 构建时从它生成内置的 `static_core_catalog`，加一条 `[[cores]]` 就是申请一个新的官方 plugin ID，由维护者决定是否接收，接收后要随新的 Manager 一起发布。参照 `shinki.emu.cmvs` 写：
+`build/cores.toml` 是官方核心目录的来源：Manager 构建时从它生成内置的 `core_catalog`，加一条 `[[cores]]` 就是申请一个新的官方 plugin ID，由维护者决定是否接收，接收后要随新的 Manager 一起发布。参照 `shinki.emu.cmvs` 写：
 
 ```toml
 [[cores]]

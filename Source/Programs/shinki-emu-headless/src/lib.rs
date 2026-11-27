@@ -47,7 +47,7 @@ impl Error {
 
 #[derive(Debug, Clone, Args)]
 pub struct Arguments {
-    /// Path to a core ZIP, unpacked core directory or library. Linked IDs require a legacy host inventory.
+    /// Path to a core ZIP, unpacked core directory, or shared library.
     #[arg(long)]
     pub core: String,
     /// Source game. Copied into an isolated temporary directory before open.
@@ -106,7 +106,7 @@ pub struct RunReport {
     pub captures: Vec<capture::Capture>,
 }
 
-pub fn run_cli(arguments: Arguments, queries: &[(&str, abi::Query)]) -> ExitCode {
+pub fn run_cli(arguments: Arguments) -> ExitCode {
     if let Err(error) = files::prepare_output(
         &arguments.game_dir,
         &arguments.output,
@@ -141,16 +141,11 @@ pub fn run_cli(arguments: Arguments, queries: &[(&str, abi::Query)]) -> ExitCode
         };
     }
     // Match Manager's native owner stack without starting Slint or an event loop.
-    let core = arguments.core.clone();
     let output = arguments.output.clone();
-    let query = queries
-        .iter()
-        .find(|(id, _)| *id == core)
-        .map(|(_, query)| *query);
     let result = std::thread::Builder::new()
         .name("shinki-headless-owner".into())
         .stack_size(8 * 1024 * 1024)
-        .spawn(move || run(arguments, query));
+        .spawn(move || run(arguments));
     match result {
         Ok(thread) => match thread.join() {
             Ok(Ok(report)) => {
@@ -219,9 +214,7 @@ fn isolated_process(audio_device: Option<&str>) -> Result<std::process::ExitStat
     Ok(command.status()?)
 }
 
-/// `query` must be a linked, process-lifetime core entrypoint, as in Manager's inventory.
-/// Dynamic cores use exactly the same LoadedFamilyPlugin path as Manager.
-fn run(arguments: Arguments, query: Option<abi::Query>) -> Result<RunReport> {
+fn run(arguments: Arguments) -> Result<RunReport> {
     if arguments.frames == 0
         || arguments.startup_timeout_ms == 0
         || !(0.0..=1.0).contains(&arguments.changed_pixel_ratio)
@@ -263,14 +256,9 @@ fn run(arguments: Arguments, query: Option<abi::Query>) -> Result<RunReport> {
     let game = private.path().join("game");
     files::copy_game(&arguments.game_dir, &game)?;
     let extracted = private.path().join("core");
-    let mut plugin = if let Some(query) = query {
-        // Safety: this function only receives entries from the host's linked inventory.
-        unsafe { LoadedFamilyPlugin::from_query(query) }
-    } else {
-        let library = files::library(&PathBuf::from(&arguments.core), &extracted)?;
-        LoadedFamilyPlugin::load(library)
-    }
-    .map_err(|error| Error::Run(error.to_string()))?;
+    let library = files::library(&PathBuf::from(&arguments.core), &extracted)?;
+    let mut plugin =
+        LoadedFamilyPlugin::load(library).map_err(|error| Error::Run(error.to_string()))?;
     if let Some(device) = &arguments.audio_device {
         if !plugin.configuration().iter().any(|field| {
             field.id == "headless_audio_device"

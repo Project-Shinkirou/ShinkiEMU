@@ -88,10 +88,7 @@ fn main() -> ExitCode {
         return match command {
             Command::Patch { command } => patch_cli::run(command),
             #[cfg(not(target_os = "ios"))]
-            Command::Headless(arguments) => shinki_emu_headless::run_cli(
-                arguments,
-                shinki_emu_manager::static_cores::STATIC_CORES,
-            ),
+            Command::Headless(arguments) => shinki_emu_headless::run_cli(arguments),
             Command::HeadlessUi(arguments) => shinki_emu_headless::ui::run_cli(arguments),
             Command::Extension(command) => match manager_app::run_extension_command(command) {
                 Ok(()) => ExitCode::SUCCESS,

@@ -16,7 +16,7 @@ enum Command {
 fn main() -> std::process::ExitCode {
     match Cli::parse().command {
         Command::Compare(arguments) => shinki_emu_headless::capture::compare_cli(arguments),
-        Command::Run(arguments) => shinki_emu_headless::run_cli(arguments, &[]),
+        Command::Run(arguments) => shinki_emu_headless::run_cli(arguments),
         #[cfg(feature = "manager-ui")]
         Command::Ui(arguments) => shinki_emu_headless::ui::run_cli(arguments),
     }

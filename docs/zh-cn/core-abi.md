@@ -68,7 +68,7 @@ cbindgen --config Source/FamilyApi/shinki-emu-abi/cbindgen.toml --crate shinki-e
 | `mages` | MPK v2 有界完整索引和资源范围 | MPK 证明家族，不代表 Impacto 选定运行 profile 可用 |
 | `renpy` | RPA2/3、RPC2，或旧 zlib-RPYC 中完整 pickle opcode 流声明的序列化 renpy.ast 对象 | 只检查字节，不导入、构造或执行 pickle；通用 zlib/pickle、RPA1、纯源码保持未知 |
 
-规则来自固定提交的 adapter 和上游格式解析器，不按作品名匹配。Musica 的 PAZ 变换、索引解析和 SC 解析由识别与运行共用，位于不依赖 VM、ABI、GPU 或音频的 `shinki-emu-musica-format`。Manager 扫描、游戏库和核心列表使用 Detector、只含元数据的 `static_core_catalog` 和已校验的 `core.json`，不注册或查询原生核心。只有开启已弃用 feature 的本地兼容构建才会生成静态入口表。
+规则来自固定提交的 adapter 和上游格式解析器，不按作品名匹配。Musica 的 PAZ 变换、索引解析和 SC 解析由识别与运行共用，位于不依赖 VM、ABI、GPU 或音频的 `shinki-emu-musica-format`。Manager 扫描、游戏库和核心列表使用 Detector、只含元数据的 `core_catalog` 和已校验的 `core.json`，不注册或查询原生核心。
 
 用户显式准备高级配置、诊断或启动时，owner 才异步激活选定 plugin；诊断不打开游戏。启动使用选定核心的新鲜 probe，并保留 open 前的再次校验。已驻留核心及暂存更新仍遵守重启语义，不自动换用其他实现。未知 plugin 和裸库保留可见诊断，不靠自动 query 补全信息。
 

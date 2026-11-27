@@ -15,7 +15,7 @@ The core uses the executable's requested typeface when it is installed. Set `fon
 
 When a script requests startup authorization, the Windows core checks mounted optical media for the volume name in the original executable. Diskless registry authorization is unsupported. To run installed files without the startup check, explicitly set `skip_disc_check` (off by default). For headless runs, place `[{"id":"skip_disc_check","value":{"Bool":true}}]` in the file passed to `--configuration`.
 
-The proposed Windows x64 release installs ADV32 as a standalone core. Publication stays blocked pending edition-specific VM and native save validation, an exact-package playtest, and [source, licensing and DLL replacement review](../../licenses/shinki-emu-adv32/WINDOWS-FFMPEG.md). The deprecated `static-adv32` feature remains available for local compatibility builds on desktop, Android, iOS and OpenHarmony. Those builds do not validate the standalone package.
+Install and test ADV32 as a standalone dynamic core. Before release, verify the selected edition’s VM, original save exchange, and the [source, notices and DLL replacement procedure](../../licenses/shinki-emu-adv32/WINDOWS-FFMPEG.md).
 
 ## Save formats
 

@@ -23,8 +23,7 @@ description: Use when maintaining ShinkiEMU itself rather than writing a core - 
 | `build/targets.toml` | 10 个 triple、runner、`manager_supported`；target 级 `blocked` 覆盖所有组件 |
 | `build/dependencies.toml` | 工具版本和下载输入（SHA256 固定） |
 | `build/vcpkg/` | `ffmpeg/`、`subtitle/` manifest；`apple-triplets/`（arm64/x64-osx、arm64-ios、arm64-ios-simulator、x64-ios）；`mobile-triplets/`（`*-android-ffmpeg`、`arm64-ohos`、`ohos-toolchain.cmake`） |
-| `Source/Manager/shinki-emu-manager/Cargo.toml` | Manager feature；已弃用的 `static-cmvs` 和 `static-adv32` 仅供本地兼容构建 |
-| `Source/Manager/shinki-emu-manager/src/static_cores.rs` | 兼容构建的 `STATIC_CORES` 入口表；默认构建为空 |
+| `Source/Manager/shinki-emu-manager/Cargo.toml` | Manager 宿主与服务的构建功能 |
 | 根 `Cargo.toml` + `Cargo.lock` | 核心 fork Git URL/提交和整个工作区的依赖；根 `[patch]` 将 fork 使用的 ShinkiEMU crate 指向树内实现 |
 | `Source/Cores/<id>/` | 单独构建的核心入口；按需开启实现的独立导出 feature |
 
@@ -121,7 +120,7 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
 
 默认和正式 Manager 按独立二进制加载核心：Android 安装符合 `android_dynamic` 策略的核心 ZIP；iOS 从应用包加载各自签名的 Framework；OHOS 从签名 HAP 加载独立的 Musica 动态库。iOS 和 OHOS 不接受用户安装可执行核心。
 
-已弃用的 `static-cmvs` 和 `static-adv32` 仅保留本地兼容入口。构建会提示改用独立核心包，`cargo xtask release` 拒绝这两个 feature。
+Manager 只加载动态核心；桌面和 Android 安装独立核心，iOS 和 OHOS 从签名应用包加载。
 
 Android 发布签名仍须符合以下要求：
 

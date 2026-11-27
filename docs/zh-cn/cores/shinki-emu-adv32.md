@@ -15,7 +15,7 @@ description: CIRCUS ADV32 核心的开发状态和本地运行方式。
 
 脚本请求启动授权时，Windows 核心会按照原版可执行文件中的卷标检查已挂载的光盘。不支持基于注册表的免盘授权。若要从已安装的文件启动并跳过光盘检查，请显式开启 `skip_disc_check`（默认关闭）。用 headless 测试时，将 `[{"id":"skip_disc_check","value":{"Bool":true}}]` 写入 `--configuration` 指定的文件。
 
-Windows x64 计划通过 Manager 安装独立的 ADV32 核心。发布前需要验证对应游戏版本的 VM 和原版存档互通、用实际安装包完成游玩验收，并审查[对应源码、许可证和 DLL 替换步骤](../../licenses/shinki-emu-adv32/WINDOWS-FFMPEG.md)。桌面端、Android、iOS 和 OpenHarmony 仍可开启已弃用的 `static-adv32` 做本地兼容构建，但不能代替独立核心验收。
+ADV32 作为独立动态核心安装。发版前按游戏发行版验证 VM 和原版存档互通，并核对[对应源码、许可证和 DLL 替换步骤](../../licenses/shinki-emu-adv32/WINDOWS-FFMPEG.md)。
 
 Windows 验收候选是 Dal Segno（MES `0x9f9a`，存档前缀 `DS`）。这一格式的 `AdvData/SAVEDATA/system.dat` 为 19,736 字节，槽位文件为 72,440 字节。独立核心还没有通过验收的游戏版本。交换存档前请备份，并在同一版本上分别验证原版和核心能否载入对方写出的存档。
 
