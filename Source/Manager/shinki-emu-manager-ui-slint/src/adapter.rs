@@ -71,6 +71,8 @@ pub struct SlintManagerAdapter {
 
 impl SlintManagerAdapter {
     pub fn new() -> Result<Self, slint::PlatformError> {
+        #[cfg(target_env = "ohos")]
+        crate::fonts::apply(crate::i18n::current());
         let window = ManagerWindow::new()?;
         tracing::info!(event = "shinki.emu.ui.init", phase = "window_component");
         const ADAPTER_LINKS: &[(&str, &str, &str)] =
