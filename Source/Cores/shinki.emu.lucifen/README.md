@@ -24,11 +24,10 @@ stops and Manager can reopen the game.
 Source builds require the two Noto Sans TrueType fonts in `Assets/Fonts` from
 Git LFS. Materialize those files before building the core.
 
-The standalone ARM64 OpenHarmony entry uses the same CPU frames and embedded
-OFL Noto Sans fonts. It sends the native 48 kHz stereo mix to a live OHAudio
-renderer; the diagnostic null device remains a non-OpenHarmony option.
-OpenHarmony needs API 15 or newer for the presentation timestamp. Sound
-position and natural completion follow presented PCM. Normal game exit
+The ARM64 OpenHarmony HAP includes Lucifen as a separate dynamic core. It uses
+the same CPU frames and OFL Noto Sans fonts and plays the native 48 kHz stereo
+mix through OHAudio. The diagnostic null device remains a non-OpenHarmony option.
+Sound position and natural completion follow presented PCM. Normal game exit
 drains the submitted tail; cancellation wakes a blocked write or drain and
 does not wait for playback. Pausing stops the game and new submissions while
 queued PCM plays out. The current audio session ends on a renderer error,

@@ -241,6 +241,7 @@ license = "MIT OR Apache-2.0"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "THIRD_PARTY_NOTICES.md", "Assets/Fonts/OFL-NotoSansJP.txt", "Assets/Fonts/OFL-NotoSansSC.txt"]
 supported_targets = ["x86_64-pc-windows-msvc"]
+ohos_hap = { library = "libshinki_emu_core_lucifen.so", abis = ["arm64-v8a"] }
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "Standalone packaging and native playback have only been targeted for Windows x64."
@@ -267,7 +268,7 @@ target = "x86_64-apple-ios"
 reason = "No signed iOS Framework."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "No OpenHarmony package."
+reason = "Bundled as a signed OHOS Manager HAP library; standalone core packages are not supported."
 
 [[cores]]
 id = "shinki.emu.cmvs"
@@ -280,6 +281,7 @@ licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
 android_dynamic = { minimum_release = "0.1.0-beta.5", requires_context = true }
 ios_framework = true
+ohos_hap = { library = "libshinki_emu_core_cmvs.so", abis = ["arm64-v8a"] }
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Bundled in the iOS Manager; standalone core packages are not supported."
@@ -291,7 +293,7 @@ target = "x86_64-apple-ios"
 reason = "Bundled in the iOS Manager; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
+reason = "Bundled as a signed OHOS Manager HAP library; standalone core packages are not supported."
 
 [[cores]]
 id = "ReMinori"

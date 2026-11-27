@@ -621,8 +621,6 @@ mod tests {
         let mut inventory = Inventory::load(root).unwrap();
         let arm = OhosTarget::Arm64.rust_target();
         let x64 = OhosTarget::X64.rust_target();
-        let arm_count = crate::ohos::cores(&inventory, arm).count();
-        let x64_count = crate::ohos::cores(&inventory, x64).count();
         let (configured, original) = crate::ohos::cores(&inventory, arm)
             .find(|(core, _)| {
                 core.ohos_hap
@@ -636,8 +634,11 @@ mod tests {
         let extra = inventory
             .cores
             .iter()
-            .position(|core| core.ohos_hap.is_none() && core.attribution.is_none())
+            .position(|core| core.id != configured && core.attribution.is_none())
             .unwrap();
+        inventory.cores[extra].ohos_hap = None;
+        let arm_count = crate::ohos::cores(&inventory, arm).count();
+        let x64_count = crate::ohos::cores(&inventory, x64).count();
         let recipe = |basename: &str, abi: &str| {
             toml::from_str(&format!("library = {basename:?}\nabis = [{abi:?}]")).unwrap()
         };
