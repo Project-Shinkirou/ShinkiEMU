@@ -1,4 +1,4 @@
-# Shinki Lucifen (Windows x64)
+# Shinki Lucifen
 
 Install the standalone core ZIP in Manager and select `shinki.emu.lucifen` for
 an imported game directory. Point Manager at the root containing `SCRIPT.LPK`,
@@ -23,6 +23,16 @@ stops and Manager can reopen the game.
 
 Source builds require the two Noto Sans TrueType fonts in `Assets/Fonts` from
 Git LFS. Materialize those files before building the core.
+
+The standalone ARM64 OpenHarmony entry uses the same CPU frames and embedded
+OFL Noto Sans fonts. It sends the native 48 kHz stereo mix to a live OHAudio
+renderer; the diagnostic null device remains a non-OpenHarmony option.
+OpenHarmony needs API 15 or newer for the presentation timestamp. Sound
+position and natural completion follow presented PCM. Normal game exit
+drains the submitted tail; cancellation wakes a blocked write or drain and
+does not wait for playback. Pausing stops the game and new submissions while
+queued PCM plays out. The current audio session ends on a renderer error,
+presentation-clock reset, or stalled device.
 
 The standalone package includes the [MPL-2.0 source links](../../../docs/licenses/shinki-emu-lucifen/SOURCE.md),
 AWS-LC attributions, dependency licenses, and a `source-commit.txt` stamp.
