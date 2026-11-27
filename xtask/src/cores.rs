@@ -100,7 +100,10 @@ impl Core {
     ) -> Result<Option<shinki_emu_metadata::CoreIdentity>> {
         let identity = self.identity(root)?;
         if self.attribution.is_some() && identity.is_none() {
-            bail!("{}: an external OHOS HAP core requires a Git adapter in Cargo.lock", self.id);
+            bail!(
+                "{}: an external OHOS HAP core requires a Git adapter in Cargo.lock",
+                self.id
+            );
         }
         if let Some(identity) = &identity {
             identity.validate()?;

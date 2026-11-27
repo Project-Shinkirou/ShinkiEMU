@@ -266,8 +266,12 @@ fn write_bundled_core_metadata(target: &str) {
         if framework {
             frameworks.push(id);
         }
-        if (framework || hap) && let Some(attribution) = core.get("attribution") {
-            let adapter = lock.as_ref().and_then(|lock| core_adapters::locked_adapter(lock, id));
+        if (framework || hap)
+            && let Some(attribution) = core.get("attribution")
+        {
+            let adapter = lock
+                .as_ref()
+                .and_then(|lock| core_adapters::locked_adapter(lock, id));
             assert!(
                 !hap || adapter.is_some(),
                 "{id}: an external OHOS HAP core requires a Git adapter in Cargo.lock"

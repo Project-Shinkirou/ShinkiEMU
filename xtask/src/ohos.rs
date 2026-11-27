@@ -64,7 +64,10 @@ impl CoreBuild<'_> {
         };
         if artifact.component != self.core.id
             || artifact.target != triple
-            || (artifact.product_version.as_deref(), artifact.source_commit.as_deref()) != product
+            || (
+                artifact.product_version.as_deref(),
+                artifact.source_commit.as_deref(),
+            ) != product
         {
             bail!(
                 "wrong OHOS core artifact for {}/{triple}/{version}",
@@ -331,7 +334,10 @@ pub(crate) fn package(
         record["hap"] = name.into();
         record["sha256"] = sha256(&hap)?.into();
         record["features"] = serde_json::json!(result.features);
-        fs::write(stage.join(BUNDLE_RECEIPT), serde_json::to_vec_pretty(&record)?)?;
+        fs::write(
+            stage.join(BUNDLE_RECEIPT),
+            serde_json::to_vec_pretty(&record)?,
+        )?;
         Ok(())
     })?;
     Ok(out.to_owned())
@@ -1625,7 +1631,8 @@ mod tests {
         let mut swapped = locked.clone();
         swapped.adapter = inv.core("siglus_rs")?.ohos_identity(root)?.unwrap().adapter;
         swapped.validate()?;
-        inv.cores.retain(|core| core.id == external.0 || core.id == "shinki.emu.musica");
+        inv.cores
+            .retain(|core| core.id == external.0 || core.id == "shinki.emu.musica");
 
         let roster: Vec<_> = cores(&inv, triple)
             .map(|(core, basename)| (core.id.as_str(), basename))
@@ -1679,7 +1686,11 @@ mod tests {
         external_record["identity"] = serde_json::to_value(&swapped)?;
         external_record["version"] = swapped.version().into();
         let error = verify_receipt_roster(&inv, triple, VERSION, COMMIT, &receipt).unwrap_err();
-        assert!(error.to_string().contains("wrong OHOS receipt for core rfvp"));
+        assert!(
+            error
+                .to_string()
+                .contains("wrong OHOS receipt for core rfvp")
+        );
         replace_raw(
             &mut staged,
             &mut members,
@@ -1717,9 +1728,18 @@ mod tests {
         let mut manifest: package::CorePackage = serde_json::from_slice(bytes)?;
         manifest.version = swapped.version();
         manifest.identity = Some(swapped);
-        replace_raw(&mut staged, &mut members, &path, serde_json::to_vec(&manifest)?);
+        replace_raw(
+            &mut staged,
+            &mut members,
+            &path,
+            serde_json::to_vec(&manifest)?,
+        );
         let error = verify(&staged, &members).unwrap_err();
-        assert!(error.to_string().contains("wrong identity, provenance or ABI"));
+        assert!(
+            error
+                .to_string()
+                .contains("wrong identity, provenance or ABI")
+        );
         Ok(())
     }
 
