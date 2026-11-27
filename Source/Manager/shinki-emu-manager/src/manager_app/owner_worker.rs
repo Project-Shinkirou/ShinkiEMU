@@ -26,8 +26,7 @@ pub(super) fn run(
         // Android applies stages only when a new app process starts.
         #[cfg(not(target_os = "android"))]
         let errors = {
-            let cores = core_directory(&data_dir)?;
-            fs::create_dir_all(&cores).map_err(|_| "SHINKI_EMU_CORES_DIRECTORY_CREATE")?;
+            let cores = prepare_core_directory(&data_dir)?;
             core_package::apply_pending(&cores).into_iter().collect()
         };
         #[cfg(target_os = "android")]

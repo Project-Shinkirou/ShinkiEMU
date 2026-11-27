@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashSet};
 
 use slint::{ComponentHandle, Model, ModelTracker, VecModel};
 
-use crate::{ManagerWindow, Notice, NoticeViewModel, Notices, tr};
+use crate::{ManagerWindow, Notice, NoticeViewModel, Notices, NoticesViewModel, tr};
 
 pub struct ErrorText {
     pub title: String,
@@ -364,6 +364,7 @@ fn fallback_title(code: &str) -> &'static str {
 
 pub(crate) struct NoticeModel {
     rows: VecModel<Notice>,
+    priority: RefCell<Option<NoticeViewModel>>,
     model_items: RefCell<Vec<NoticeViewModel>>,
     host_items: RefCell<Vec<NoticeViewModel>>,
     dismissed: RefCell<HashSet<String>>,
@@ -373,20 +374,24 @@ impl NoticeModel {
     pub(crate) fn new() -> Self {
         Self {
             rows: VecModel::default(),
+            priority: RefCell::new(None),
             model_items: RefCell::new(Vec::new()),
             host_items: RefCell::new(Vec::new()),
             dismissed: RefCell::new(HashSet::new()),
         }
     }
 
-    pub(crate) fn set_model(&self, items: Vec<NoticeViewModel>) {
+    pub(crate) fn set_model(&self, notices: &NoticesViewModel) {
         let mut dismissed = self.dismissed.borrow_mut();
         let host = self.host_items.borrow();
         dismissed.retain(|id| {
-            items.iter().any(|item| item.id == *id) || host.iter().any(|item| item.id == *id)
+            notices.priority.as_ref().is_some_and(|item| item.id == *id)
+                || notices.items.iter().any(|item| item.id == *id)
+                || host.iter().any(|item| item.id == *id)
         });
         drop(host);
-        *self.model_items.borrow_mut() = items;
+        self.priority.borrow_mut().clone_from(&notices.priority);
+        self.model_items.borrow_mut().clone_from(&notices.items);
         drop(dismissed);
         self.rebuild();
     }
@@ -429,6 +434,9 @@ impl NoticeModel {
     fn rebuild(&self) {
         let dismissed = self.dismissed.borrow();
         let mut rows = Vec::new();
+        if let Some(item) = self.priority.borrow().as_ref().filter(|item| !dismissed.contains(&item.id)) {
+            rows.push(to_notice(item));
+        }
         for item in self.host_items.borrow().iter() {
             if !dismissed.contains(&item.id) {
                 rows.push(to_notice(item));

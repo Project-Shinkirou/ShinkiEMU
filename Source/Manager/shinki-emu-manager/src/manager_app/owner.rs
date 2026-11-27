@@ -149,12 +149,16 @@ pub(super) struct FamilyOwner {
 
 impl FamilyOwner {
     /// Read package manifests; native code remains on the deferred owner thread.
-    pub(super) fn new(data_dir: PathBuf, mailbox: FrameMailbox) -> Result<Self, String> {
+    pub(super) fn new(data_dir: PathBuf, mailbox: FrameMailbox) -> Self {
         let (commands, receiver) = bounded(COMMAND_CAPACITY);
         let (results, background) = unbounded();
-        fs::create_dir_all(core_directory(&data_dir)?).map_err(|error| error.to_string())?;
-        let installed = recognition::installed(&recognition::directories(&data_dir)?)?;
-        Ok(Self {
+        let installed = recognition::directories(&data_dir)
+            .and_then(|directories| recognition::installed(&directories))
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "initial core inventory unavailable");
+                BTreeMap::new()
+            });
+        Self {
             commands,
             updates: Arc::new(Mutex::new(Update::default())),
             worker: None,
@@ -170,7 +174,7 @@ impl FamilyOwner {
             window_service: Mutex::new(None),
             text: Mutex::new(None),
             cancellation: Mutex::new(None),
-        })
+        }
     }
 
     pub(super) fn start(&mut self) -> Result<(), String> {

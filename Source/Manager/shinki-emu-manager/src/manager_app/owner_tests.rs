@@ -32,7 +32,7 @@ impl Harness {
     fn with(configure: impl FnOnce(&mut Fixture) + Send + 'static) -> Self {
         let mailbox = FrameMailbox::new();
         let root = tempfile::tempdir().unwrap();
-        let mut owner = FamilyOwner::new(root.path().to_owned(), mailbox.clone()).unwrap();
+        let mut owner = FamilyOwner::new(root.path().to_owned(), mailbox.clone());
         owner.start().unwrap();
         loop {
             match background(&mut owner) {

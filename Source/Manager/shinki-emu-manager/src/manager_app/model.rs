@@ -247,7 +247,8 @@ impl ShinkiEmuManagerController {
             patch,
             cores,
             notices: NoticesViewModel {
-                items: self.notice_views().into_iter().chain(inventory_notice).collect(),
+                priority: inventory_notice,
+                items: self.notice_views(),
                 snackbar: self.snackbar.view(),
             },
             settings: SettingsViewModel {
@@ -553,11 +554,17 @@ impl ShinkiEmuManagerController {
             Ok(cores) => cores,
             Err(error) => {
                 let text = describe_error(&error);
+                let id = format!("core-inventory:{}", &sha256_id(&error)[..12]);
+                let detail = if error.ends_with(&text.detail) {
+                    error
+                } else {
+                    format!("{}\n{error}", text.detail)
+                };
                 *inventory_notice = Some(NoticeViewModel {
-                    id: format!("core-inventory:{}", &sha256_id(&error)[..12]),
+                    id,
                     severity: "error".into(),
                     title: text.title,
-                    detail: error,
+                    detail,
                     code: text.code,
                     core: String::new(),
                 });

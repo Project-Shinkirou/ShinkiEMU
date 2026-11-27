@@ -50,6 +50,13 @@ pub(super) fn core_directory(data_dir: &Path) -> Result<PathBuf, String> {
     Ok(data_dir.join("cores"))
 }
 
+pub(super) fn prepare_core_directory(data_dir: &Path) -> Result<PathBuf, String> {
+    let cores = core_directory(data_dir)?;
+    fs::create_dir_all(&cores)
+        .map_err(|error| format!("SHINKI_EMU_CORES_DIRECTORY_CREATE: {error}"))?;
+    Ok(cores)
+}
+
 #[cfg(target_os = "android")]
 static ANDROID_STARTUP_CORE_PACKAGES: std::sync::OnceLock<Vec<(String, String)>> =
     std::sync::OnceLock::new();

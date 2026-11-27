@@ -470,6 +470,8 @@ pub struct CoreDownloadViewModel {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NoticesViewModel {
+    /// An active problem that must remain visible alongside transient host notices.
+    pub priority: Option<NoticeViewModel>,
     pub items: Vec<NoticeViewModel>,
     pub snackbar: SnackbarViewModel,
 }

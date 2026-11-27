@@ -339,6 +339,37 @@ fn a_metadata_failure_does_not_delay_or_restart_local_import() {
 }
 
 #[test]
+fn cold_core_inventory_failure_does_not_prevent_library_open() {
+    for block_pending in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let cores = root.path().join("cores");
+        let blocker = if block_pending {
+            fs::create_dir(&cores).unwrap();
+            cores.join(core_package::PENDING)
+        } else {
+            cores.clone()
+        };
+        fs::write(&blocker, b"not a directory").unwrap();
+
+        let mut app = ShinkiEmuManagerController::open_library(
+            root.path().into(), FrameMailbox::new(), Vec::new(),
+        ).unwrap();
+        let model = app.model().unwrap();
+        assert!(model.cores.items.is_empty());
+        let inventory_error = app.cores_view().err().expect("core inventory is unreadable");
+        let notice = model.notices.priority.expect("core directory error must be visible");
+        assert!(notice.detail.ends_with(&inventory_error));
+
+        fs::remove_file(blocker).unwrap();
+        fs::create_dir_all(cores).unwrap();
+        let model = app.model().unwrap();
+        assert!(model.notices.priority.is_none());
+        assert!(!model.notices.items.iter().any(|notice| notice.id == "core-load:<pending>"));
+        app.registry.shutdown().unwrap();
+    }
+}
+
+#[test]
 fn inventory_failure_requires_restart_and_shutdown_still_joins_owner() {
     let root = tempfile::tempdir().unwrap();
     let mut app = ShinkiEmuManagerController::open_library(root.path().into(), FrameMailbox::new(), Vec::new()).unwrap();
@@ -359,10 +390,9 @@ fn inventory_failure_requires_restart_and_shutdown_still_joins_owner() {
     let inventory_error = app.cores_view().err().expect("core inventory is unreadable");
     let model = app.model().unwrap();
     assert!(model.cores.items.is_empty());
-    let notice = model.notices.items.iter()
-        .find(|notice| notice.id.starts_with("core-inventory:"))
+    let notice = model.notices.priority
         .expect("inventory failure is visible without losing the library model");
-    assert_eq!(notice.detail, inventory_error);
+    assert!(notice.detail.ends_with(&inventory_error));
     // A valid selection remains persisted for the next successful startup.
     fs::remove_file(root.path().join("cores")).unwrap();
     fs::create_dir(root.path().join("cores")).unwrap();
@@ -370,7 +400,7 @@ fn inventory_failure_requires_restart_and_shutdown_still_joins_owner() {
     let model = app.add_game_directory(&game).unwrap();
     assert_eq!(model.settings.roots, [game.to_str().unwrap()]);
     assert!(model.library.games.is_empty());
-    assert!(!model.notices.items.iter().any(|notice| notice.id.starts_with("core-inventory:")));
+    assert!(model.notices.priority.is_none());
     app.registry.shutdown().unwrap();
     app.registry.shutdown().unwrap();
 }

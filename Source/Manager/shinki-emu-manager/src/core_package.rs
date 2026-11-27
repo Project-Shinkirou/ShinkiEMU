@@ -552,7 +552,10 @@ pub(crate) fn apply_pending_checked(
     let pending = cores.join(PENDING);
     let entries = match pending_entries(cores) {
         Ok(entries) => entries,
-        Err(error) => return vec![("<pending>".into(), error)],
+        Err(error) => {
+            tracing::warn!(%error, path = %pending.display(), "cannot read staged core directory");
+            return failures;
+        }
     };
     for (stem, kind) in &entries {
         if *kind != PendingKind::Remove {
