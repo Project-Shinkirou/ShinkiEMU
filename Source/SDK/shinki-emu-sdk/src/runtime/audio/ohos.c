@@ -1,5 +1,5 @@
-// OHAudio renderer behind the SDK AudioSink. Writers block on a bounded
-// interleaved f32 queue; the renderer drains it and pads underruns with silence.
+// OHAudio renderer behind the SDK AudioSink. Writers convert interleaved f32
+// into a bounded signed PCM queue; the renderer pads underruns with silence.
 #include <ohaudio/native_audiorenderer.h>
 #include <ohaudio/native_audiostreambuilder.h>
 #include <errno.h>
@@ -54,7 +54,7 @@ typedef struct {
     pthread_mutex_t mutex;
     pthread_cond_t changed;
     OH_AudioRenderer *renderer;
-    float *samples;
+    int32_t *samples;
     PlaybackClock *clock;
     uint32_t stall_ms;
     size_t channels;
@@ -131,8 +131,9 @@ static void refresh_clock(ShinkiAudioStream *stream) {
     if (!pending) return;
 
     int64_t position = 0, timestamp = 0;
-    OH_AudioStream_Result result = OH_AudioRenderer_GetAudioTimestampInfo(
-        stream->renderer, &position, &timestamp);
+    // API 10's timestamp tracks presentation at unchanged playback speed.
+    OH_AudioStream_Result result = OH_AudioRenderer_GetTimestamp(
+        stream->renderer, CLOCK_MONOTONIC, &position, &timestamp);
     pthread_mutex_lock(&stream->mutex);
     if (!status(stream)) {
         uint64_t previous = clock->progress.played_frames;
@@ -179,14 +180,14 @@ static bool earlier(struct timespec a, struct timespec b) {
 static int32_t fill(OH_AudioRenderer *renderer, void *user_data, void *audio_data, int32_t bytes) {
     (void)renderer;
     ShinkiAudioStream *stream = user_data;
-    float *output = audio_data;
+    int32_t *output = audio_data;
     pthread_mutex_lock(&stream->mutex);
-    if (bytes < 0 || (size_t)bytes % (sizeof(float) * stream->channels)) {
+    if (bytes < 0 || (size_t)bytes % (sizeof(*output) * stream->channels)) {
         fail(stream, AUDIO_INVALID_PCM);
         pthread_mutex_unlock(&stream->mutex);
         return -1;
     }
-    size_t wanted = (size_t)bytes / sizeof(float);
+    size_t wanted = (size_t)bytes / sizeof(*output);
     size_t available = status(stream) ? 0 : stream->count < wanted ? stream->count : wanted;
     if (stream->clock) {
         if (available && !stream->clock->count) {
@@ -202,14 +203,14 @@ static int32_t fill(OH_AudioRenderer *renderer, void *user_data, void *audio_dat
     if (available) {
         size_t contiguous = stream->capacity - stream->read;
         if (contiguous > available) contiguous = available;
-        memcpy(output, stream->samples + stream->read, contiguous * sizeof(float));
-        memcpy(output + contiguous, stream->samples, (available - contiguous) * sizeof(float));
+        memcpy(output, stream->samples + stream->read, contiguous * sizeof(*output));
+        memcpy(output + contiguous, stream->samples, (available - contiguous) * sizeof(*output));
         stream->read = (stream->read + available) % stream->capacity;
         stream->count -= available;
         pthread_cond_broadcast(&stream->changed);
     }
     pthread_mutex_unlock(&stream->mutex);
-    memset(output + available, 0, (wanted - available) * sizeof(float));
+    memset(output + available, 0, (wanted - available) * sizeof(*output));
     return 0;
 }
 
@@ -221,7 +222,7 @@ static void release(ShinkiAudioStream *stream) {
     free(stream);
 }
 
-// Opens and starts a 32-bit float renderer. Returns 0 or an OHAudio error.
+// Opens and starts a signed 32-bit PCM renderer. Returns 0 or an OHAudio error.
 int shinki_ohos_audio_open(ShinkiAudioStream **out, uint32_t sample_rate,
                             uint32_t channels, uint32_t stall_ms) {
     ShinkiAudioStream *stream = calloc(1, sizeof(*stream));
@@ -245,7 +246,7 @@ int shinki_ohos_audio_open(ShinkiAudioStream **out, uint32_t sample_rate,
         return AUDIO_INTERNAL;
     }
     stream->capacity = (size_t)QUEUE_FRAMES * channels;
-    stream->samples = malloc(stream->capacity * sizeof(float));
+    stream->samples = malloc(stream->capacity * sizeof(*stream->samples));
     if (stall_ms) stream->clock = calloc(1, sizeof(*stream->clock));
     if (!stream->samples || (stall_ms && !stream->clock)) {
         release(stream);
@@ -255,7 +256,7 @@ int shinki_ohos_audio_open(ShinkiAudioStream **out, uint32_t sample_rate,
     OH_AudioStream_Result result = OH_AudioStreamBuilder_Create(&builder, AUDIOSTREAM_TYPE_RENDERER);
     if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetSamplingRate(builder, (int32_t)sample_rate);
     if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetChannelCount(builder, (int32_t)channels);
-    if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetSampleFormat(builder, AUDIOSTREAM_SAMPLE_F32LE);
+    if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetSampleFormat(builder, AUDIOSTREAM_SAMPLE_S32LE);
     if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetRendererInfo(builder, AUDIOSTREAM_USAGE_GAME);
     // Register both callbacks together. Separate error registration needs
     // API 20; a separate write registration can overwrite the legacy set.
@@ -276,6 +277,18 @@ int shinki_ohos_audio_open(ShinkiAudioStream **out, uint32_t sample_rate,
     }
     *out = stream;
     return 0;
+}
+
+// Convert directly into each contiguous half of the ring. Scale by 2^31,
+// not INT32_MAX (whose nearest f32 would round up to 2^31 anyway).
+static void enqueue_pcm(int32_t *dst, const float *src, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        float sample = src[i];
+        if (sample != sample) dst[i] = 0;
+        else if (sample >= 1.0f) dst[i] = INT32_MAX;
+        else if (sample <= -1.0f) dst[i] = INT32_MIN;
+        else dst[i] = (int32_t)(sample * 0x1p31f);
+    }
 }
 
 // Queues whole frames, waiting for space. Cancellation and native errors
@@ -305,8 +318,8 @@ int shinki_ohos_audio_write(ShinkiAudioStream *stream, const float *samples, siz
         size_t tail = (stream->read + stream->count) % stream->capacity;
         size_t contiguous = stream->capacity - tail;
         if (contiguous > chunk) contiguous = chunk;
-        memcpy(stream->samples + tail, samples + written, contiguous * sizeof(float));
-        memcpy(stream->samples, samples + written + contiguous, (chunk - contiguous) * sizeof(float));
+        enqueue_pcm(stream->samples + tail, samples + written, contiguous);
+        enqueue_pcm(stream->samples, samples + written + contiguous, chunk - contiguous);
         stream->count += chunk;
         written += chunk;
         if (stream->clock) stream->clock->progress.accepted_frames += chunk / stream->channels;
