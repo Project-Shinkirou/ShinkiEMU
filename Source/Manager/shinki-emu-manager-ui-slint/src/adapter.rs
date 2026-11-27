@@ -72,6 +72,7 @@ pub struct SlintManagerAdapter {
 impl SlintManagerAdapter {
     pub fn new() -> Result<Self, slint::PlatformError> {
         let window = ManagerWindow::new()?;
+        tracing::info!(event = "shinki.emu.ui.initialized", phase = "window_component");
         const ADAPTER_LINKS: &[(&str, &str, &str)] =
             include!(concat!(env!("OUT_DIR"), "/adapter-links.rs"));
         window.global::<App>().on_locked_adapter(|id| {
@@ -130,7 +131,9 @@ impl SlintManagerAdapter {
             cached_launch: RefCell::default(),
             window,
         };
+        tracing::info!(event = "shinki.emu.ui.initialized", phase = "models_allocated");
         adapter.bind_models();
+        tracing::info!(event = "shinki.emu.ui.initialized", phase = "models_bound");
         adapter.install_internal_callbacks();
         Ok(adapter)
     }

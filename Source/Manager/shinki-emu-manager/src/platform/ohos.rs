@@ -124,6 +124,7 @@ struct OhosPlatform {
 
 impl Platform for OhosPlatform {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
+        tracing::info!(event = "shinki.emu.ohos.window_adapter");
         Ok(self.window.clone())
     }
 
