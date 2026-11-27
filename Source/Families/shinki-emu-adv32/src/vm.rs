@@ -474,6 +474,8 @@ pub(crate) struct Vm {
     staff_roll: Option<StaffRoll>,
     #[cfg(feature = "video-ffmpeg")]
     movie: Option<Movie>,
+    #[cfg(feature = "video-ffmpeg")]
+    movie_cache_directory: Option<Arc<Path>>,
     palette: BTreeMap<u16, [u8; 3]>,
     parties: BTreeMap<u8, Vec<Button>>,
     choices: Option<Vec<Button>>,
@@ -666,6 +668,8 @@ impl Vm {
             staff_roll: None,
             #[cfg(feature = "video-ffmpeg")]
             movie: None,
+            #[cfg(feature = "video-ffmpeg")]
+            movie_cache_directory: None,
             palette: BTreeMap::new(),
             parties: BTreeMap::new(),
             choices: None,
@@ -5660,6 +5664,11 @@ impl Vm {
     }
 
     #[cfg(feature = "video-ffmpeg")]
+    pub(crate) fn set_movie_cache_directory(&mut self, cache_directory: Option<Arc<Path>>) {
+        self.movie_cache_directory = cache_directory;
+    }
+
+    #[cfg(feature = "video-ffmpeg")]
     fn start_movie(&mut self, name: &str) -> Result<()> {
         let path = self.game.resource("movie", name, "mpg")?.to_path_buf();
         self.ensure_audio()?;
@@ -5667,7 +5676,7 @@ impl Vm {
         for channel in 1..=BUTTON_SOUND_CHANNEL {
             self.stop_sound(channel)?;
         }
-        self.movie = Some(Movie::open(path)?);
+        self.movie = Some(Movie::open(path, self.movie_cache_directory.clone())?);
         self.wait = Wait::Movie;
         self.frame_dirty = true;
         Ok(())

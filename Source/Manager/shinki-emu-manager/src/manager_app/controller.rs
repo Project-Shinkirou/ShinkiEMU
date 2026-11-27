@@ -218,6 +218,13 @@ impl ManagerController for ShinkiEmuManagerController {
     fn is_game_active(&self) -> bool {
         self.session_running()
     }
+    #[cfg(target_env = "ohos")]
+    fn input_session_epoch(&self) -> Option<u64> {
+        self.active
+            .as_ref()
+            .filter(|active| active.opened && active.closing.is_none())
+            .map(|active| active.epoch)
+    }
     #[cfg(target_os = "android")]
     fn has_pending_game_launch(&self) -> bool {
         self.native_action

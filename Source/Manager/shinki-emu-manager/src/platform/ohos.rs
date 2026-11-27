@@ -4,12 +4,13 @@
 //! the software renderer draws straight into mapped OHNativeWindow buffers,
 //! and the stage frame reaches Slint as a CPU image (see `stage_software.rs`).
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::HashMap,
     ffi::{CStr, CString, c_char, c_void},
     path::{Path, PathBuf},
     rc::Rc,
     sync::{
+        Arc,
         OnceLock,
         atomic::{AtomicBool, AtomicU32, Ordering},
         mpsc,
@@ -17,6 +18,7 @@ use std::{
     time::Duration,
 };
 
+use shinki_emu_manager_core::model::{FamilyEvent, KeyCode, KeyModifiers, KeyState, MAX_TEXT_BYTES};
 use slint::platform::{
     EventLoopProxy, Key, Platform, PointerEventButton, WindowAdapter, WindowEvent,
     software_renderer::{
@@ -42,6 +44,7 @@ enum Event {
     Resize(u32, u32),
     Touch(f32, f32, TouchPhase),
     Key(i32, bool),
+    Text(u64, String),
     Surface(bool),
     Foreground(bool),
     Configuration { dark: bool, scale: f32 },
@@ -62,9 +65,15 @@ enum TouchPhase {
 pub type FrameHook = Box<dyn FnMut()>;
 /// Shared so delivery can release the slot before running the handler.
 type LifecycleHandler = Rc<dyn Fn(LifecycleEvent)>;
+type InputHandler = Rc<dyn Fn(Option<u64>, FamilyEvent) -> bool>;
+
+struct AbilityDirectories {
+    files: Arc<str>,
+    cache: Arc<str>,
+}
 
 static EVENTS: OnceLock<mpsc::Sender<Event>> = OnceLock::new();
-static FILES: OnceLock<PathBuf> = OnceLock::new();
+static DIRECTORIES: OnceLock<AbilityDirectories> = OnceLock::new();
 static NEXT_PICK_ID: AtomicU32 = AtomicU32::new(1);
 static FOREGROUND: AtomicBool = AtomicBool::new(true);
 static SURFACE: AtomicBool = AtomicBool::new(false);
@@ -74,6 +83,8 @@ thread_local! {
     static PENDING_PICKERS: RefCell<HashMap<u32, PickDone>> = RefCell::new(HashMap::new());
     static LIFECYCLE_HANDLER: RefCell<Option<LifecycleHandler>> = RefCell::new(None);
     static FRAME_HOOKS: RefCell<Option<(FrameHook, FrameHook)>> = RefCell::new(None);
+    static INPUT_HANDLER: RefCell<Option<InputHandler>> = RefCell::new(None);
+    static TEXT_TARGET: Cell<Option<u64>> = const { Cell::new(None) };
 }
 
 unsafe extern "C" {
@@ -183,11 +194,17 @@ impl OhosPlatform {
             }
             Event::Surface(present) => {
                 SURFACE.store(present, Ordering::Release);
+                if !present {
+                    set_text_target(None);
+                }
                 self.window.request_redraw();
                 lifecycle(LifecycleEvent::Surface(present));
             }
             Event::Foreground(active) => {
                 FOREGROUND.store(active, Ordering::Release);
+                if !active {
+                    set_text_target(None);
+                }
                 self.window
                     .dispatch_event(WindowEvent::WindowActiveChanged(active));
                 self.window.request_redraw();
@@ -227,12 +244,36 @@ impl OhosPlatform {
                 });
             }
             Event::Key(code, pressed) => {
+                if lifecycle_state() == (true, true)
+                    && let Some(code) = physical_key(code)
+                    && dispatch_runtime_input(
+                        None,
+                        FamilyEvent::Key {
+                            code,
+                            logical: None,
+                            state: if pressed { KeyState::Pressed } else { KeyState::Released },
+                            modifiers: KeyModifiers {
+                                shift: false,
+                                control: false,
+                                alt: false,
+                                super_key: false,
+                            },
+                        },
+                    )
+                {
+                    return;
+                }
                 if let Some(text) = key_text(code) {
                     self.window.dispatch_event(if pressed {
                         WindowEvent::KeyPressed { text }
                     } else {
                         WindowEvent::KeyReleased { text }
                     });
+                }
+            }
+            Event::Text(epoch, text) => {
+                if TEXT_TARGET.get() == Some(epoch) {
+                    dispatch_runtime_input(Some(epoch), FamilyEvent::TextInput { text });
                 }
             }
         }
@@ -299,6 +340,63 @@ fn key_text(code: i32) -> Option<slint::SharedString> {
         2064 => "/".into(),
         // KEY_ESCAPE, and KEY_BACK which the ArkTS shell forwards for the system back gesture.
         2 | 2070 => Key::Escape.into(),
+        _ => return None,
+    })
+}
+
+/// Native XComponent key codes. Back remains on its existing Slint route.
+fn physical_key(code: i32) -> Option<KeyCode> {
+    use KeyCode::*;
+    Some(match code {
+        2000..=2009 => {
+            [Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9]
+                [(code - 2000) as usize]
+        }
+        2012 => ArrowUp,
+        2013 => ArrowDown,
+        2014 => ArrowLeft,
+        2015 => ArrowRight,
+        2017..=2042 => [
+            A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+        ][(code - 2017) as usize],
+        2043 => Comma,
+        2044 => Period,
+        2045 => AltLeft,
+        2046 => AltRight,
+        2047 => ShiftLeft,
+        2048 => ShiftRight,
+        2049 => Tab,
+        2050 => Space,
+        2054 => Enter,
+        2055 => Backspace,
+        2056 => Grave,
+        2057 => Minus,
+        2058 => Equals,
+        2059 => BracketLeft,
+        2060 => BracketRight,
+        2061 => Backslash,
+        2062 => Semicolon,
+        2063 => Apostrophe,
+        2064 => Slash,
+        2068 => PageUp,
+        2069 => PageDown,
+        2070 => Escape,
+        2071 => Delete,
+        2072 => ControlLeft,
+        2073 => ControlRight,
+        2081 => Home,
+        2082 => End,
+        2083 => Insert,
+        2090..=2101 => [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12][(code - 2090) as usize],
+        2103..=2112 => [
+            Numpad0, Numpad1, Numpad2, Numpad3, Numpad4, Numpad5, Numpad6, Numpad7, Numpad8,
+            Numpad9,
+        ][(code - 2103) as usize],
+        2113 => NumpadDivide,
+        2114 => NumpadMultiply,
+        2115 => NumpadSubtract,
+        2116 => NumpadAdd,
+        2119 => NumpadEnter,
         _ => return None,
     })
 }
@@ -375,26 +473,57 @@ unsafe extern "C" fn shinki_ohos_event(kind: i32, x: f64, y: f64, text: *const c
 }
 
 #[unsafe(no_mangle)]
+unsafe extern "C" fn shinki_ohos_submit_text(epoch: *const c_char, text: *const u8, length: usize) {
+    if epoch.is_null() || text.is_null() || !(1..=MAX_TEXT_BYTES).contains(&length) {
+        return;
+    }
+    let epoch = unsafe { CStr::from_ptr(epoch) }.to_str().ok().and_then(|value| value.parse().ok());
+    let text = std::str::from_utf8(unsafe { std::slice::from_raw_parts(text, length) });
+    if let (Some(epoch), Ok(text)) = (epoch, text)
+        && !text.contains('\0')
+    {
+        send(Event::Text(epoch, text.to_owned()));
+    }
+}
+
+#[unsafe(no_mangle)]
 unsafe extern "C" fn shinki_ohos_pick_result(id: u32, path: *const c_char, error: *const c_char) {
     send(Event::PickResult(id, c_string(path), c_string(error)));
 }
 
-/// Start the Manager once per process with the ability's `filesDir`. `run`
-/// is the application entry; it runs on a dedicated thread with
-/// `stack_bytes` of stack after the OHOS Slint platform and OHAudio output
-/// are installed.
+/// Start the Manager once per process with the Ability's private data and
+/// cache directories. The application runs on a dedicated Slint thread.
 ///
 /// # Safety
-/// `files` is null or a NUL-terminated string valid for this call.
+/// `files` and `cache` are NUL-terminated strings valid for this call.
 pub unsafe fn start(
     files: *const c_char,
+    cache: *const c_char,
     stack_bytes: usize,
     run: fn() -> Result<(), Box<dyn std::error::Error>>,
 ) {
-    if files.is_null() {
+    if DIRECTORIES.get().is_some() {
         return;
     }
-    if FILES.set(PathBuf::from(c_string(files))).is_err() {
+    let parse = |value: *const c_char| {
+        if value.is_null() {
+            return None;
+        }
+        let path = unsafe { CStr::from_ptr(value) }.to_str().ok()?;
+        (path.len() <= shinki_emu_abi::MAX_HOST_DIRECTORY_BYTES
+            && Path::new(path).is_absolute()
+            && Path::new(path).is_dir())
+            .then(|| Arc::<str>::from(path))
+    };
+    let (Some(files), Some(cache)) = (parse(files), parse(cache)) else {
+        report_startup_error("SHINKI_EMU_OHOS_CONTEXT_PATH: invalid Ability directory");
+        return;
+    };
+    if let Err(error) = tempfile::tempfile_in(Path::new(cache.as_ref())) {
+        report_startup_error(&format!("SHINKI_EMU_OHOS_CACHE: {error}"));
+        return;
+    }
+    if DIRECTORIES.set(AbilityDirectories { files, cache }).is_err() {
         return;
     }
     let (sender, receiver) = mpsc::channel();
@@ -439,6 +568,28 @@ pub fn set_frame_hooks(before: FrameHook, after: FrameHook) {
 pub fn set_lifecycle_handler(handler: Box<dyn Fn(LifecycleEvent)>) {
     let handler: LifecycleHandler = Rc::from(handler);
     LIFECYCLE_HANDLER.with(|slot| *slot.borrow_mut() = Some(handler));
+}
+
+pub(crate) fn set_input_handler(handler: impl Fn(Option<u64>, FamilyEvent) -> bool + 'static) {
+    INPUT_HANDLER.with(|slot| *slot.borrow_mut() = Some(Rc::new(handler)));
+}
+
+fn dispatch_runtime_input(epoch: Option<u64>, event: FamilyEvent) -> bool {
+    let handler = INPUT_HANDLER.with(|slot| slot.borrow().clone());
+    handler.is_some_and(|handler| handler(epoch, event))
+}
+
+pub(crate) fn set_text_target(epoch: Option<u64>) {
+    let epoch = match lifecycle_state() {
+        (true, true) => epoch,
+        _ => None,
+    };
+    if TEXT_TARGET.replace(epoch) != epoch {
+        let payload = epoch.map(|value| value.to_string()).unwrap_or_default();
+        if let Err(error) = notify("textTarget", &payload) {
+            tracing::warn!(event = "shinki.emu.ohos.text_target_failed", %error);
+        }
+    }
 }
 
 /// `(foreground, surface)` as last reported by the ArkTS shell.
@@ -515,23 +666,24 @@ pub(super) fn report_startup_error(message: &str) {
 }
 
 pub(super) fn default_data_dir() -> Result<PathBuf, String> {
-    Ok(FILES
-        .get()
-        .ok_or("SHINKI_EMU_OHOS_CONTEXT_MISSING")?
-        .join("ShinkiEMU"))
+    Ok(files_directory()?.join("ShinkiEMU"))
 }
 
 /// A location for host data discovery, not an installed native-library path.
 pub(super) fn program_file() -> Result<PathBuf, String> {
-    Ok(FILES
+    Ok(files_directory()?.join("libshinki_emu_manager.so"))
+}
+
+fn files_directory() -> Result<&'static Path, String> {
+    DIRECTORIES
         .get()
-        .ok_or("SHINKI_EMU_OHOS_CONTEXT_MISSING")?
-        .join("libshinki_emu_manager.so"))
+        .map(|directories| Path::new(directories.files.as_ref()))
+        .ok_or_else(|| "SHINKI_EMU_OHOS_CONTEXT_MISSING".into())
 }
 
 /// Rawfile resources the ArkTS shell extracts before starting the Manager.
 pub(super) fn bundled_resource_dir() -> Option<PathBuf> {
-    Some(FILES.get()?.join("bundled"))
+    Some(files_directory().ok()?.join("bundled"))
 }
 
 pub mod bundled {
@@ -577,6 +729,7 @@ pub mod bundled {
     }
 
     pub fn load(plugin_id: &str) -> Result<LoadedFamilyPlugin, String> {
+        let directories = super::DIRECTORIES.get().ok_or("SHINKI_EMU_OHOS_CONTEXT_MISSING")?;
         let path = library(plugin_id).ok_or("SHINKI_EMU_OHOS_BUNDLED_CORE_ORIGIN")?;
         let name = CString::new(path.as_os_str().as_bytes())
             .map_err(|_| "SHINKI_EMU_OHOS_BUNDLED_CORE_ORIGIN")?;
@@ -602,8 +755,14 @@ pub mod bundled {
             return Err("SHINKI_EMU_OHOS_BUNDLED_CORE_QUERY_ORIGIN".into());
         }
         let query = unsafe { std::mem::transmute::<*mut c_void, shinki_emu_abi::Query>(symbol) };
-        let provider =
-            unsafe { LoadedFamilyPlugin::from_query(query) }.map_err(|error| error.to_string())?;
+        let provider = unsafe {
+            LoadedFamilyPlugin::from_query_with_directories(
+                query,
+                directories.cache.clone(),
+                directories.files.clone(),
+            )
+        }
+        .map_err(|error| error.to_string())?;
         if provider.manager_descriptor().plugin_id != plugin_id {
             return Err("SHINKI_EMU_CORE_PACKAGE_PLUGIN_MISMATCH".into());
         }

@@ -62,6 +62,7 @@ fn render_extent_sets_raster_and_zero_uses_logical_canvas() {
                 },
                 None,
                 None,
+                None,
             )
             .unwrap();
         assert_eq!(

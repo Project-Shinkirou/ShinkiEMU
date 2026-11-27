@@ -16,6 +16,26 @@ use std::sync::{
 };
 use std::thread::JoinHandle;
 
+/// Create a private, seekable staging file whose owner removes it on drop.
+/// OHOS has no usable default temporary directory outside the Ability sandbox.
+pub fn stage_movie_file(
+    cache: Option<&std::path::Path>,
+    prefix: &str,
+) -> std::io::Result<tempfile::NamedTempFile> {
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(prefix);
+    if let Some(cache) = cache {
+        return builder.tempfile_in(cache);
+    }
+    #[cfg(not(target_env = "ohos"))]
+    return builder.tempfile();
+    #[cfg(target_env = "ohos")]
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "OHOS movie staging requires the host cache directory",
+    ))
+}
+
 enum Command {
     Next { packets: usize, bytes: usize },
     Seek(u64),

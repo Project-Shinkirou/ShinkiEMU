@@ -151,7 +151,11 @@ impl MusicaSession {
                         "movie dimensions do not match the stage",
                     ));
                 }
-                self.movie = Some(crate::movie::Movie::open(&self.archive, &state)?);
+                self.movie = Some(crate::movie::Movie::open(
+                    &self.archive,
+                    &state,
+                    self.movie_cache_directory.clone(),
+                )?);
                 #[cfg(feature = "ffmpeg-vcpkg")]
                 self.scene.begin_movie(&state.resource_uri)?;
                 Ok(false)

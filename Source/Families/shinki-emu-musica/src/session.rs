@@ -19,6 +19,7 @@ use crate::{
 };
 use shinki_emu_sdk::runtime::*;
 use std::{
+    path::Path,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -37,6 +38,7 @@ pub(crate) struct MusicaSession {
     scene: Scene,
     audio: Audio,
     movie: Option<crate::movie::Movie>,
+    movie_cache_directory: Option<Arc<Path>>,
     replacement: Option<crate::native::text::TextBridge>,
     hook_failed: bool,
     choice_text: Option<Vec<String>>,
@@ -90,6 +92,7 @@ impl MusicaSession {
         progress_in_background: bool,
         primary_encoding: crate::ScriptEncoding,
         native: crate::native_directory::NativeFiles,
+        movie_cache_directory: Option<Arc<Path>>,
     ) -> Self {
         let persisted_globals = vm.state().global_variables.clone();
         let entry_uri = vm.state().script_uri.clone();
@@ -117,6 +120,7 @@ impl MusicaSession {
             scene,
             audio,
             movie: None,
+            movie_cache_directory,
             replacement,
             hook_failed: false,
             choice_text: None,
