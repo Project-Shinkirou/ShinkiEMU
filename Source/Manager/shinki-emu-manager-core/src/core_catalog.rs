@@ -8,6 +8,8 @@
 pub struct CoreCatalogEntry {
     pub plugin_id: &'static str,
     pub family_id: &'static str,
+    /// Canonical engine label shared by every implementation of this family.
+    pub family_name: &'static str,
     pub display_name: &'static str,
     /// In-repo cores share the product release identity, not an adapter sequence.
     pub first_party: bool,

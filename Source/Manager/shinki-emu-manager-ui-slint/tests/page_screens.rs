@@ -855,6 +855,8 @@ fn reset(a: &SlintManagerAdapter) {
     w.global::<Library>().set_detail_open(false);
     w.global::<Store>().set_detail_open(false);
     w.global::<Patch>().set_step(1);
+    w.global::<shinki_emu_manager_ui_slint::Cores>()
+        .set_engine_filter("".into());
     w.global::<App>().set_page("library".into());
 }
 
@@ -950,8 +952,8 @@ fn every_page_renders_stable_frames() {
             {
                 exercise_onboarding_storage(&adapter, &software, (width, height), save);
             }
-            if only.is_empty() || only.iter().any(|p| "cores/cards".starts_with(p)) {
-                exercise_core_cards(&adapter, &software, (width, height), save);
+            if only.is_empty() || only.iter().any(|p| "cores/list".starts_with(p)) {
+                exercise_core_list(&adapter, &software, (width, height), save);
             }
             for (id, setup) in states() {
                 if !only.is_empty() && !only.iter().any(|p| id.starts_with(p.as_str())) {
@@ -1733,7 +1735,7 @@ fn exercise_onboarding_storage(
     reset(a);
 }
 
-fn exercise_core_cards(
+fn exercise_core_list(
     a: &SlintManagerAdapter,
     software: &MinimalSoftwareWindow,
     (width, height): (u32, u32),
@@ -1754,6 +1756,7 @@ fn exercise_core_cards(
         name: title.into(),
         state: state.into(),
         version: version.into(),
+        engine_id: "krkr".into(),
         engine: "KiriKiri Z".into(),
         source: "bundled".into(),
         ..Default::default()
@@ -1763,10 +1766,28 @@ fn exercise_core_cards(
         "release/extended-runtime-and-scripting-support-2026.11@02c366a5 (adapter e83a23bf)";
     let update = "feature/android-native-video-and-scripting-runtime@79f5c82e (adapter c77383b8)";
     let mut model = base();
+    model.cores.engines = [
+        ("adv32", "ADV32"),
+        ("artemis", "Artemis"),
+        ("krkr", "KiriKiri Z"),
+        ("lucifen", "Lucifen"),
+    ]
+    .into_iter()
+    .map(|(id, label)| ChoiceViewModel {
+        id: id.into(),
+        label: label.into(),
+    })
+    .collect();
     model.cores.items = vec![
-        core("next", "Prototype Core", "pending-install", "0.6.1-beta.12"),
+        CoreViewModel {
+            engine_id: "lucifen".into(),
+            engine: "Lucifen".into(),
+            ..core("next", "Prototype Core", "pending-install", "0.6.1-beta.12")
+        },
         CoreViewModel {
             message: "Missing runtime archive; install the matching core package.".into(),
+            engine_id: String::new(),
+            engine: String::new(),
             removable: true,
             ..core("broken", "Legacy Core", "failed", "0.4.7")
         },
@@ -1774,43 +1795,61 @@ fn exercise_core_cards(
             update_version: update.into(),
             ..core("long", LONG_EN, "loaded", long_version)
         },
-        core(
-            "other",
-            LONG_JA,
-            "installed",
-            "feature/02c366a518d278eb@02c366a5 (adapter e83a23bf)",
-        ),
+        CoreViewModel {
+            engine_id: "lucifen".into(),
+            engine: "Lucifen".into(),
+            ..core(
+                "other",
+                LONG_JA,
+                "installed",
+                "feature/02c366a518d278eb@02c366a5 (adapter e83a23bf)",
+            )
+        },
         CoreViewModel {
             source: "online".into(),
+            engine_id: "artemis".into(),
+            engine: "Artemis".into(),
             ..core("online", "Aurora VN Runtime", "available", version)
         },
     ];
     a.apply(&model);
     page(a, "cores");
-    save("cores/mixed-cards", frame());
+    save("cores/mixed-list", frame());
 
-    let reveal = |label: &str| {
-        let position = LogicalPosition::new(if width < 600 { 160.0 } else { 480.0 }, 460.0);
-        let bottom_nav = if width < 600 { 80.0 } else { 0.0 };
-        for attempt in 0..16 {
-            let mut delta_y = if attempt < 8 { -216.0 } else { 216.0 };
-            if let Some(item) = labeled_item(software, |text| text == label) {
-                let center = item.map_to_native_window(item.geometry().center());
-                if center.y > 64.0 && center.y < height as f32 - bottom_nav - 8.0 {
-                    return;
-                }
-                delta_y = if center.y <= 64.0 { 144.0 } else { -144.0 };
-            }
-            software.dispatch_event(WindowEvent::PointerScrolled {
-                position,
-                delta_x: 0.0,
-                delta_y,
-            });
-            frame();
+    let choose_engine = |label: &str| {
+        click_label(software, tr!("支持的引擎"));
+        let popup = frame();
+        if label == "Artemis" {
+            save("cores/engine-options", popup);
         }
-        panic!("could not reveal core action {label}");
+        use i_slint_core::accessibility::{AccessibilityAction, SupportedAccessibilityAction};
+        let option = matching_label(software, |text, item| {
+            text == label
+                && item
+                    .supported_accessibility_actions()
+                    .contains(SupportedAccessibilityAction::Default)
+        })
+        .expect("actionable engine menu option");
+        option.accessible_action(&AccessibilityAction::Default);
+        frame()
     };
-    reveal(tr!("默认设置"));
+    save("cores/filtered-artemis", choose_engine("Artemis"));
+    assert_eq!(cores.get_engine_filter(), "artemis");
+    assert!(labeled_item(software, |label| label == "Aurora VN Runtime").is_some());
+    assert!(labeled_item(software, |label| label == "Prototype Core").is_none());
+    assert!(labeled_item(software, |label| label == "Legacy Core").is_none());
+    a.apply(&model);
+    assert_eq!(cores.get_engine_filter(), "artemis");
+
+    save("cores/filtered-empty", choose_engine("ADV32"));
+    assert_eq!(cores.get_engine_filter(), "adv32");
+    assert!(labeled_item(software, |label| label == tr!("没有匹配此引擎的核心。")).is_some());
+    choose_engine(tr!("全部引擎"));
+    assert!(cores.get_engine_filter().is_empty());
+    assert!(labeled_item(software, |label| label == "Legacy Core").is_some());
+
+    choose_engine("KiriKiri Z");
+    assert_eq!(cores.get_engine_filter(), "krkr");
     let current = labeled_item(software, |text| text == long_version)
         .expect("full current version is accessible");
     let update_display = format!("→ {update}");
@@ -1821,12 +1860,18 @@ fn exercise_core_cards(
         current.geometry().size.height < 32.0,
         "version text is a single line"
     );
-    save("cores/installed-cards", frame());
+    save("cores/installed-list", frame());
     click_label(software, tr!("默认设置"));
     assert_eq!(cores.get_default_plugin(), "long");
-    frame();
-    reveal(tr!("收起默认设置"));
-    click_label(software, tr!("收起默认设置"));
+    save("cores/defaults-expanded", frame());
+    let collapse = matching_label(software, |text, item| {
+        text == tr!("收起默认设置")
+            && item
+                .supported_accessibility_actions()
+                .contains(i_slint_core::accessibility::SupportedAccessibilityAction::Default)
+    })
+    .expect("expanded row retains a collapse action");
+    collapse.accessible_action(&i_slint_core::accessibility::AccessibilityAction::Default);
     assert!(cores.get_default_plugin().is_empty());
     frame();
 
@@ -1834,7 +1879,7 @@ fn exercise_core_cards(
     let calls = clicked.clone();
     cores.on_install_online(move |id| calls.borrow_mut().push(id));
     let update_label = tr!("更新核心");
-    reveal(update_label);
+    assert!(labeled_item(software, |text| text == update_label).is_some());
     click_label(software, update_label);
     assert_eq!(clicked.borrow()[0], "long");
     model.cores.items[2].download = CoreDownloadViewModel {
@@ -1845,20 +1890,18 @@ fn exercise_core_cards(
     };
     a.apply(&model);
     frame();
-    reveal(tr!("取消"));
     save("cores/download-progress", frame());
     let cancelled = Rc::new(RefCell::new(SharedString::default()));
     let response = cancelled.clone();
     cores.on_cancel_download(move |id| *response.borrow_mut() = id);
     click_label(software, tr!("取消"));
     assert_eq!(cancelled.borrow().as_str(), "long");
-    reveal(tr!("安装"));
-    save("cores/available-cards", frame());
+    choose_engine("Artemis");
+    save("cores/available-list", frame());
     click_label(software, tr!("安装"));
     assert_eq!(clicked.borrow()[1], "online");
     model.network.allowed = false;
     a.apply(&model);
-    reveal(tr!("安装"));
     save("cores/offline-install-disabled", frame());
     click_label(software, tr!("安装"));
     assert_eq!(
@@ -1876,7 +1919,10 @@ fn exercise_core_cards(
     model.cores.items[2].download = CoreDownloadViewModel::default();
     a.apply(&model);
     frame();
-    reveal(tr!("默认设置"));
+    assert_eq!(cores.get_engine_filter(), "artemis");
+    assert!(labeled_item(software, |text| text == tr!("没有匹配此引擎的核心。")).is_some());
+    choose_engine("KiriKiri Z");
+    assert!(labeled_item(software, |text| text == tr!("默认设置")).is_some());
     save("cores/no-core-download", frame());
     let update_all = tr!("全部更新（{}）").replace("{}", "1");
     for hidden in [
@@ -1895,7 +1941,6 @@ fn exercise_core_cards(
     let picks = local.clone();
     cores.on_install_local(move || *picks.borrow_mut() += 1);
     let local_label = tr!("从本地安装…");
-    reveal(local_label);
     assert!(
         labeled_item(software, |text| text
             == tr!("此版本不在线下载核心，已安装和随附的核心照常可用。"))

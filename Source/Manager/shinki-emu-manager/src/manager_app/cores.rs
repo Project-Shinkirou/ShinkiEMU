@@ -1,10 +1,11 @@
 use super::*;
 use crate::core_download::Phase;
 use crate::core_package::{self, PendingKind};
-use shinki_emu_manager_core::{FamilyCapability, INDEPENDENT_FAMILY_ABI_FINGERPRINT};
+use shinki_emu_manager_core::{FamilyCapability, INDEPENDENT_FAMILY_ABI_FINGERPRINT, core_catalog};
 use shinki_emu_manager_ui_slint::tr;
 use shinki_emu_manager_ui_slint::{
-    CoreBatchViewModel, CoreDownloadViewModel, CoreViewModel, CoresViewModel, describe_error,
+    ChoiceViewModel, CoreBatchViewModel, CoreDownloadViewModel, CoreViewModel, CoresViewModel,
+    describe_error,
 };
 use shinki_emu_metadata::{CoreCatalogEntry, CoreIdentity};
 use std::io::{self, BufRead, Seek, SeekFrom};
@@ -65,6 +66,45 @@ fn require_online_core_downloads() -> Result<(), String> {
     if online_core_downloads() { Ok(()) } else { Err("SHINKI_EMU_CORE_DOWNLOAD_DISABLED".into()) }
 }
 
+pub(super) fn core_engine_choices() -> Vec<ChoiceViewModel> {
+    let mut families = BTreeSet::new();
+    let mut engines: Vec<_> = core_catalog::entries().iter()
+        .filter(|core| recognition::has_adopted_build(core) && families.insert(core.family_id))
+        .map(|core| ChoiceViewModel { id: core.family_id.into(), label: core.family_name.into() })
+        .collect();
+    engines.sort_unstable_by(|a, b| a.label.cmp(&b.label).then_with(|| a.id.cmp(&b.id)));
+    engines
+}
+
+fn catalog_labels(plugin_id: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    core_catalog::lookup(plugin_id).map(|core| (core.display_name, core.family_id, core.family_name))
+}
+
+fn package_labels<'a>(
+    directory: &Path,
+    stem: &'a str,
+    package: Option<&core_package::CorePackage>,
+) -> (&'a str, &'static str, &'static str) {
+    let labels = package.map_or_else(
+        // A validated manifest can identify an archived row even when its
+        // package was rejected. Labels do not make it runnable.
+        || core_package::read_manifest(directory).and_then(|manifest| catalog_labels(&manifest.plugin_id)),
+        |package| catalog_labels(&package.manifest.plugin_id),
+    );
+    labels.map_or((stem, "", ""), |labels| labels)
+}
+
+fn core_state_rank(state: &str) -> u8 {
+    match state {
+        "failed" => 0,
+        "pending-install" | "pending-update" | "pending-removal" => 1,
+        "loading" => 2,
+        "loaded" => 3,
+        "installed" => 4,
+        _ => 5,
+    }
+}
+
 #[cfg(any(target_os = "ios", target_env = "ohos"))]
 pub(super) fn bundled_core_identity(plugin_id: &str) -> Option<&'static CoreIdentity> {
     #[cfg(target_os = "ios")]
@@ -98,7 +138,7 @@ fn capability_label(capability: FamilyCapability) -> &'static str {
     }
 }
 
-/// Short commits only in the Manager's core cards. The identity still owns
+/// Short commits only in the Manager's core list. The identity still owns
 /// the full commits used to compare versions, select packages, and verify installs.
 fn core_card_version(version: &str, identity: Option<&CoreIdentity>) -> String {
     let Some(identity) = identity else { return version.to_owned() };
@@ -174,8 +214,14 @@ impl ShinkiEmuManagerController {
         let mut listed_plugins = BTreeSet::new();
         let mut listed_stems = BTreeSet::new();
         for (id, installed) in self.registry.installed() {
-            let catalog = shinki_emu_manager_core::core_catalog::lookup(id);
             let native = self.registry.descriptor(id);
+            let (name, engine_id, engine) = if let Some(labels) = catalog_labels(id) {
+                labels
+            } else if let Some(descriptor) = native {
+                (descriptor.display_name.as_str(), descriptor.family_id.as_str(), descriptor.family_name.as_str())
+            } else {
+                (id.as_str(), "", "")
+            };
             let bundled = installed.bundled;
             let stem = if bundled && cfg!(any(target_os = "android", target_os = "ios", target_env = "ohos")) {
                 String::new()
@@ -205,8 +251,9 @@ impl ShinkiEmuManagerController {
             listed_stems.insert(stem.clone());
             items.push(CoreViewModel {
                 id: id.clone(),
-                name: catalog.map(|entry| entry.display_name.to_owned()).or_else(|| native.map(|descriptor| descriptor.display_name.clone())).unwrap_or_else(|| id.clone()),
-                engine: catalog.map(|entry| entry.family_id.to_owned()).or_else(|| native.map(|descriptor| descriptor.family_id.clone())).unwrap_or_default(),
+                name: name.into(),
+                engine_id: engine_id.into(),
+                engine: engine.into(),
                 version: if identity.is_some() {
                     core_card_version(version, identity)
                 } else {
@@ -229,12 +276,16 @@ impl ShinkiEmuManagerController {
                 let Some(stem) = entry.file_name().to_str().map(str::to_owned) else { continue; };
                 if stem.starts_with('.') || listed_stems.contains(&stem) || self.plugin_errors.contains_key(&stem)
                     || !entry.file_type().map_err(|error| error.to_string())?.is_dir() { continue; }
-                let manifest = core_package::read_package(&entry.path()).ok().map(|package| package.manifest);
-                listed_plugins.extend(manifest.map(|manifest| manifest.plugin_id));
+                let path = entry.path();
+                let package = core_package::read_package(&path).ok();
+                let (name, engine_id, engine) = package_labels(&path, &stem, package.as_ref());
+                listed_plugins.extend(package.map(|package| package.manifest.plugin_id));
                 listed_stems.insert(stem.clone());
                 let removing = directory == cores && pending.get(&stem) == Some(&PendingKind::Remove);
                 items.push(CoreViewModel {
-                    name: stem.clone(),
+                    name: name.into(),
+                    engine_id: engine_id.into(),
+                    engine: engine.into(),
                     state: if removing { "pending-removal" } else { "failed" }.into(),
                     source: if directory == cores { "user" } else { "bundled" }.into(),
                     message: "SHINKI_EMU_CORE_PACKAGE_MANIFEST: missing or invalid package, library, or duplicate plugin identity; install an identified core package".into(),
@@ -244,7 +295,6 @@ impl ShinkiEmuManagerController {
                 });
             }
         }
-        items.sort_by(|left, right| left.name.cmp(&right.name));
         let updates_available = items
             .iter()
             .filter(|item| !item.update_version.is_empty())
@@ -259,9 +309,17 @@ impl ShinkiEmuManagerController {
             let described = describe_error(raw);
             let kind = pending.get(stem);
             let rejected_stage = cfg!(target_os = "android") && kind == Some(&PendingKind::Install);
+            let directory = if kind == Some(&PendingKind::Install) {
+                cores.join(core_package::PENDING).join(stem)
+            } else {
+                cores.join(stem)
+            };
+            let (name, engine_id, engine) = package_labels(&directory, stem, None);
             items.push(CoreViewModel {
                 stem: stem.clone(),
-                name: stem.clone(),
+                name: name.into(),
+                engine_id: engine_id.into(),
+                engine: engine.into(),
                 state: if kind == Some(&PendingKind::Remove) { "pending-removal" } else { "failed" }.into(),
                 source: "user".into(),
                 message: described.title,
@@ -279,17 +337,14 @@ impl ShinkiEmuManagerController {
             let directory = cores.join(core_package::PENDING).join(stem);
             let package = core_package::read_package(&directory).ok();
             let plugin_id = package.as_ref().map(|package| package.manifest.plugin_id.clone());
-            let online = plugin_id.as_deref().and_then(|id| self.online_core(id));
-            let name = online.map_or_else(|| stem.clone(), |entry| entry.display_name.clone());
-            let engine = online
-                .map(|entry| entry.family_name.clone())
-                .unwrap_or_default();
+            let (name, engine_id, engine) = package_labels(&directory, stem, package.as_ref());
             listed_plugins.extend(plugin_id.clone());
             items.push(CoreViewModel {
                 id: plugin_id.unwrap_or_default(),
                 stem: stem.clone(),
-                name,
-                engine,
+                name: name.into(),
+                engine_id: engine_id.into(),
+                engine: engine.into(),
                 version: package
                     .map(|package| match package.manifest.identity.as_ref() {
                         Some(identity) => core_card_version(&package.manifest.version, Some(identity)),
@@ -311,10 +366,13 @@ impl ShinkiEmuManagerController {
                 .filter(|plugin_id| !listed_plugins.contains(*plugin_id))
                 .collect();
             for entry in available.into_iter().filter_map(|id| self.downloadable_core(id)) {
+                let (name, engine_id, engine) = catalog_labels(&entry.plugin_id)
+                    .map_or((entry.display_name.as_str(), "", entry.family_name.as_str()), |labels| labels);
                 items.push(CoreViewModel {
                     id: entry.plugin_id.clone(),
-                    name: entry.display_name.clone(),
-                    engine: entry.family_name.clone(),
+                    name: name.into(),
+                    engine_id: engine_id.into(),
+                    engine: engine.into(),
                     version: core_card_version(&entry.version, entry.identity.as_ref()),
                     state: "available".into(),
                     source: "online".into(),
@@ -323,8 +381,15 @@ impl ShinkiEmuManagerController {
                 });
             }
         }
+        items.sort_unstable_by(|a, b| {
+            core_state_rank(&a.state).cmp(&core_state_rank(&b.state))
+                .then_with(|| a.name.cmp(&b.name))
+                .then_with(|| a.stem.cmp(&b.stem))
+                .then_with(|| a.id.cmp(&b.id))
+        });
         Ok(CoresViewModel {
             items,
+            engines: core_engine_choices(),
             restart_required: if cfg!(target_os = "android") {
                 pending.keys().any(|stem| !self.plugin_errors.contains_key(stem))
             } else {
@@ -827,8 +892,8 @@ mod tests {
         .unwrap();
         let entry = |version: &str| CoreCatalogEntry {
             plugin_id: "shinki.emu.musica".into(),
-            display_name: "Shinki Musica".into(),
-            family_name: "Musica".into(),
+            display_name: "Published core name".into(),
+            family_name: "Published family name".into(),
             version: version.into(),
             abi: INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
             platform: core_platform(),
@@ -848,6 +913,7 @@ mod tests {
         let online = view.items.iter().find(|item| item.id == "shinki.emu.musica").unwrap();
         assert_eq!(online.state, "available");
         assert_eq!(online.source, "online");
+        assert_eq!((online.engine_id.as_str(), online.engine.as_str()), ("musica", "Musica"));
         assert_eq!(online.version, "0.3.0");
         assert_eq!(view.updates_available, 0);
         assert_eq!(
@@ -947,6 +1013,81 @@ mod tests {
             .into_iter()
             .find(|item| item.id == id)
             .unwrap()
+    }
+
+    #[test]
+    fn supported_engine_choices_match_the_target_before_core_startup() {
+        let choices = core_engine_choices();
+        let label = |id: &str| choices.iter().find(|choice| choice.id == id).map(|choice| choice.label.as_str());
+        assert_eq!(choices.iter().map(|choice| &choice.id).collect::<BTreeSet<_>>().len(), choices.len());
+        match env!("SHINKI_EMU_BUILD_TARGET") {
+            "x86_64-pc-windows-msvc" => {
+                assert_eq!(label("lucifen"), Some("Lucifen"));
+                assert_eq!(label("adv32"), Some("ADV32"));
+                assert_eq!(label("musica"), Some("Musica"));
+                assert_eq!(label("cmvs"), Some("CMVS"));
+                assert_eq!(label("krkr"), Some("KiriKiri"));
+            }
+            "x86_64-unknown-linux-gnu" | "aarch64-apple-darwin" | "x86_64-apple-darwin" => {
+                assert_eq!(label("adv32"), Some("ADV32"));
+                assert_eq!(label("lucifen"), None);
+            }
+            "aarch64-linux-android" | "x86_64-linux-android" => {
+                assert_eq!(label("krkr"), Some("KiriKiri"));
+                assert_eq!(label("artemis"), Some("Artemis"));
+                assert_eq!(label("softpal"), None);
+                assert_eq!(label("adv32"), None);
+                assert_eq!(label("lucifen"), None);
+            }
+            "aarch64-apple-ios" | "aarch64-apple-ios-sim" | "x86_64-apple-ios" => {
+                assert_eq!(label("krkr"), Some("KiriKiri"));
+                assert_eq!(label("softpal"), Some("SoftPAL"));
+                assert_eq!(label("artemis"), None);
+                assert_eq!(label("adv32"), None);
+                assert_eq!(label("lucifen"), None);
+            }
+            "aarch64-unknown-linux-ohos" => {
+                assert_eq!(label("adv32"), Some("ADV32"));
+                assert_eq!(label("lucifen"), Some("Lucifen"));
+                assert_eq!(label("cmvs"), Some("CMVS"));
+                assert_eq!(label("krkr"), None);
+            }
+            "x86_64-unknown-linux-ohos" => {
+                assert_eq!(choices, [ChoiceViewModel { id: "musica".into(), label: "Musica".into() }]);
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
+    fn offline_core_list_keeps_unknown_packages_and_orders_pending_rows() {
+        let root = tempfile::tempdir().unwrap();
+        let mut app = ShinkiEmuManagerController::open_library(
+            root.path().into(), FrameMailbox::new(), Vec::new(),
+        ).unwrap();
+        app.metadata_catalog = None;
+        assert!(!app.network_allowed);
+        assert!(!app.cores_started());
+        let initial = app.cores_view().unwrap();
+        assert!(initial.items.is_empty());
+        assert_eq!(initial.engines.iter().find(|engine| engine.id == "fvp").unwrap().label, "FVP");
+
+        let unknown_stem = "shinki_emu_unknown";
+        stage_fixture(root.path(), "unknown.external.plugin", unknown_stem);
+        assert!(core_package::apply_pending(&root.path().join("cores")).is_empty());
+        let (id, stem) = PLUGINS[0];
+        stage_fixture(root.path(), id, stem);
+        let view = app.cores_view().unwrap();
+        assert_eq!(view.engines, initial.engines);
+        let [unknown, pending] = view.items.as_slice() else {
+            panic!("expected one archived row and one pending row: {:?}", view.items);
+        };
+        assert_eq!((unknown.stem.as_str(), unknown.state.as_str(), unknown.engine_id.as_str()),
+            (unknown_stem, "failed", ""));
+        assert!(unknown.removable);
+        assert_eq!((pending.stem.as_str(), pending.state.as_str(), pending.engine_id.as_str(), pending.engine.as_str()),
+            (stem, "pending-install", "fvp", "FVP"));
     }
 
     #[test]
@@ -1095,6 +1236,11 @@ mod tests {
         let selected = view.items.iter().find(|item| item.stem == remove).unwrap();
         assert_eq!(remaining.state, "failed");
         assert_eq!(selected.state, "failed");
+        assert_eq!(view.items.iter().map(|item| item.stem.as_str()).collect::<Vec<_>>(), [keep, remove]);
+        for row in [remaining, selected] {
+            assert_eq!((row.engine_id.as_str(), row.engine.as_str()), ("fvp", "FVP"));
+            assert!(row.id.is_empty(), "duplicate package rows must not offer plugin-level diagnosis");
+        }
         assert!(selected.removable);
         let diagnostics = root.path().join("diagnostics");
         fs::create_dir_all(&diagnostics).unwrap();
@@ -1186,6 +1332,7 @@ mod tests {
 
         let card = item(&app, id);
         assert_eq!((card.source.as_str(), card.stem.as_str()), ("bundled", stem));
+        assert_eq!((card.engine_id.as_str(), card.engine.as_str()), ("fvp", "FVP"));
         assert!(!card.removable);
         assert!(app.uninstall_core(&card.stem).is_err());
         assert!(core_package::pending_entries(&user_cores).unwrap().is_empty());

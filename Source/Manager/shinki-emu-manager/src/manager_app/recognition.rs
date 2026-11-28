@@ -220,7 +220,9 @@ mod android_policy_tests {
     }
 }
 
-fn is_supported(core: &core_catalog::CoreCatalogEntry) -> bool {
+/// Build inventory coverage for the Manager's core browser, excluding standalone
+/// build rows on platforms that only load cores adopted into the app bundle.
+pub(super) fn has_adopted_build(core: &core_catalog::CoreCatalogEntry) -> bool {
     #[cfg(target_env = "ohos")]
     {
         shinki_emu_manager::platform::ohos::bundled::configured_cores()
@@ -228,16 +230,18 @@ fn is_supported(core: &core_catalog::CoreCatalogEntry) -> bool {
     }
     #[cfg(target_os = "android")]
     { core.android_dynamic.is_some() }
-    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
-    {
-        if core.supported {
-            return true;
-        }
-        #[cfg(target_os = "ios")]
-        { shinki_emu_manager::platform::bundled_core_ids().contains(&core.plugin_id) }
-        #[cfg(not(target_os = "ios"))]
-        false
+    #[cfg(target_os = "ios")]
+    { shinki_emu_manager::platform::bundled_core_ids().contains(&core.plugin_id) }
+    #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
+    { core.supported }
+}
+
+fn is_supported(core: &core_catalog::CoreCatalogEntry) -> bool {
+    #[cfg(target_os = "ios")]
+    if core.supported {
+        return true;
     }
+    has_adopted_build(core)
 }
 
 pub(super) fn supported_core(plugin_id: &str) -> Result<&'static core_catalog::CoreCatalogEntry, &'static str> {

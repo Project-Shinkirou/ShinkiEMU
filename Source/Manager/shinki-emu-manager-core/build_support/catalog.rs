@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
 #[path = "../../../../build/android_dynamic.rs"]
@@ -26,10 +26,12 @@ pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, Stri
             .is_empty()
     });
     let mut ids = BTreeSet::new();
+    let mut family_names = BTreeMap::new();
     let mut output = String::from("static ENTRIES: &[CoreCatalogEntry] = &[\n");
     for core in array(&cores, "cores")? {
         let plugin_id = text(core, "id")?;
         let family_id = text(core, "family_id")?;
+        let family_name = text(core, "family_name")?;
         let display_name = text(core, "display_name")?;
         if plugin_id.is_empty()
             || plugin_id.len() > 128
@@ -46,10 +48,16 @@ pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, Stri
                 .bytes()
                 .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
             || !family_id.as_bytes()[0].is_ascii_lowercase()
+            || family_name.trim().is_empty()
             || display_name.trim().is_empty()
         {
-            return Err(format!("invalid family_id or display_name for {plugin_id}"));
+            return Err(format!(
+                "invalid family_id, family_name or display_name for {plugin_id}"
+            ));
         }
+        // Use the first declared family label even if that implementation is
+        // not built for this target; labels must not depend on which core is visible.
+        let family_name = *family_names.entry(family_id).or_insert(family_name);
         let supported = enabled && contains_target(core, "supported_targets", target)?;
         let first_party = core.get("attribution").is_none();
         let policy = android_dynamic::parse(core)?;
@@ -68,7 +76,7 @@ pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, Stri
         };
         let android_dynamic = android_dynamic.as_deref().unwrap_or("None");
         writeln!(output,
-            "    CoreCatalogEntry {{ plugin_id: {plugin_id:?}, family_id: {family_id:?}, display_name: {display_name:?}, first_party: {first_party}, supported: {supported}, android_dynamic: {android_dynamic} }},"
+            "    CoreCatalogEntry {{ plugin_id: {plugin_id:?}, family_id: {family_id:?}, family_name: {family_name:?}, display_name: {display_name:?}, first_party: {first_party}, supported: {supported}, android_dynamic: {android_dynamic} }},"
         ).expect("String write");
     }
     if ids.is_empty() {

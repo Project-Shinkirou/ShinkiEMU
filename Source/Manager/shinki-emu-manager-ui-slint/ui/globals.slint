@@ -556,6 +556,7 @@ export struct CoreInfo {
     id: string,
     stem: string,
     name: string,
+    engine-id: string,
     engine: string,
     version: string,
     state: string,
@@ -595,6 +596,8 @@ export global Logs {
 
 export global Cores {
     in-out property <[CoreInfo]> items;
+    in-out property <[Choice]> engines;
+    in-out property <string> engine-filter;
     in-out property <bool> restart-required;
     in-out property <int> updates-available;
     in-out property <int> update-all-count;

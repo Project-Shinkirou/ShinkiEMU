@@ -206,6 +206,7 @@ export component ChoiceSelect {
     in property <string> label;
     in property <[Choice]> choices;
     in property <string> value;
+    in property <string> empty-label;
     in property <bool> enabled: true;
     in property <bool> has-error;
     in property <string> supporting-text;
@@ -220,10 +221,22 @@ export component ChoiceSelect {
         width: root.width;
         height: root.height;
         label: root.label;
-        enabled: root.enabled && root.choices.length > 0;
+        enabled: root.enabled && (root.choices.length > 0 || root.empty-label != "");
         has-error: root.has-error;
         supporting-text: root.supporting-text;
         clicked => { menu.show(); }
+
+        if root.value == "" && root.empty-label != "" : MaterialText {
+            x: 0px;
+            y: 0px;
+            width: frame.slot-width;
+            height: frame.slot-height;
+            text: root.empty-label;
+            style: MaterialTypography.body-large;
+            color: MaterialPalette.on-surface;
+            vertical-alignment: center;
+            overflow: elide;
+        }
 
         for choice in root.choices : MaterialText {
             x: 0px;
@@ -243,17 +256,29 @@ export component ChoiceSelect {
         x: 0px;
         y: frame.field-height;
         width: root.width;
-        height: min(root.choices.length * 48px + 16px, 6 * 48px + 16px);
-        count: root.choices.length;
+        height: min(self.count * 48px + 16px, 6 * 48px + 16px);
+        count: root.choices.length + (root.empty-label != "" ? 1 : 0);
+
+        if root.empty-label != "" : MenuRow {
+            text: root.empty-label;
+            selected: root.value == "";
+            clicked => {
+                if root.value != "" {
+                    root.selected("");
+                }
+                menu.close();
+            }
+        }
 
         for choice in root.choices : MenuRow {
             text: choice.label;
             selected: choice.id == root.value;
             clicked => {
-                menu.close();
-                if choice.id != root.value {
-                    root.selected(choice.id);
+                let id = choice.id;
+                if id != root.value {
+                    root.selected(id);
                 }
+                menu.close();
             }
         }
     }

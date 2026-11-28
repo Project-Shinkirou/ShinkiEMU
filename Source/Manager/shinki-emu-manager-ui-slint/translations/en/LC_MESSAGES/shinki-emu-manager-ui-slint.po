@@ -2940,3 +2940,12 @@ msgstr "Reopen the app and try again."
 
 msgid "此版本无法打开游戏库数据库。原文件已保留，请使用兼容版本。"
 msgstr "This version cannot open the game library database. The original file is intact. Open it with a compatible version."
+
+msgid "支持的引擎"
+msgstr "Supported engines"
+
+msgid "全部引擎"
+msgstr "All engines"
+
+msgid "没有匹配此引擎的核心。"
+msgstr "No cores match this engine."

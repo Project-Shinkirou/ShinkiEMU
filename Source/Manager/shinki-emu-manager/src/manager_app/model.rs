@@ -569,7 +569,10 @@ impl ShinkiEmuManagerController {
                     code: text.code,
                     core: String::new(),
                 });
-                CoresViewModel::default()
+                CoresViewModel {
+                    engines: cores::core_engine_choices(),
+                    ..CoresViewModel::default()
+                }
             }
         };
         cores.default_configuration_state = self.defaults_plugin.as_deref().map(|id| self.configuration_state(Some(id))).unwrap_or("unprepared").into();

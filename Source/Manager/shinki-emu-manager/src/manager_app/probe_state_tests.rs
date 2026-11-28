@@ -387,6 +387,8 @@ fn cold_core_inventory_failure_does_not_prevent_library_open() {
         ).unwrap();
         let model = app.model().unwrap();
         assert!(model.cores.items.is_empty());
+        let engines = model.cores.engines;
+        assert_eq!(engines.iter().find(|engine| engine.id == "musica").unwrap().label, "Musica");
         let inventory_error = app.cores_view().err().expect("core inventory is unreadable");
         let notice = model.notices.priority.expect("core directory error must be visible");
         assert!(notice.detail.ends_with(&inventory_error));
@@ -394,6 +396,7 @@ fn cold_core_inventory_failure_does_not_prevent_library_open() {
         fs::remove_file(blocker).unwrap();
         fs::create_dir_all(cores).unwrap();
         let model = app.model().unwrap();
+        assert_eq!(model.cores.engines, engines);
         assert!(model.notices.priority.is_none());
         assert!(!model.notices.items.iter().any(|notice| notice.id == "core-load:<pending>"));
         app.registry.shutdown().unwrap();

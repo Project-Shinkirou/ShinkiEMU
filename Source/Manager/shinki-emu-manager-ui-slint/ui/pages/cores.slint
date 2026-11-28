@@ -3,6 +3,7 @@ import { App, Cores, CoreInfo, Network } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { ConfigFieldList } from "../components/config-field.slint";
 import { RenderPicker } from "../components/render-picker.slint";
+import { ChoiceSelect } from "../components/select.slint";
 import { PageScroll, SettingGroup, StatusChip } from "./settings/common.slint";
 
 export global CoreText {
@@ -26,9 +27,9 @@ export global CoreText {
         return source == "bundled" ? @tr("随附") : source == "user" ? @tr("用户安装") : source == "online" ? @tr("在线") : source;
     }
 
-    public pure function in-group(core: CoreInfo, group: string) -> bool {
-        return group == "installed" ? core.state == "loaded" || core.state == "installed" || core.state == "loading"
-            : group == "pending" ? self.is-pending(core.state) : core.state == group;
+    public pure function matches-filter(core: CoreInfo) -> bool {
+        return (core.state != "available" || Cores.online-downloads)
+            && (Cores.engine-filter == "" || core.engine-id == Cores.engine-filter);
     }
 
     public pure function is-pending(state: string) -> bool {
@@ -97,14 +98,13 @@ component CoreRow {
     preferred-height: l.preferred-height;
 
     l := VerticalLayout {
-        padding-left: 16px;
-        padding-right: 8px;
-        padding-top: 12px;
-        padding-bottom: 4px;
+        padding-left: root.compact ? 12px : 16px;
+        padding-right: root.compact ? 12px : 16px;
+        padding-top: 14px;
+        padding-bottom: 10px;
         spacing: 4px;
 
         HorizontalLayout {
-            padding-right: 8px;
             spacing: 12px;
 
             VerticalLayout {
@@ -120,14 +120,41 @@ component CoreRow {
             }
 
             VerticalLayout {
+                min-width: 0px;
                 horizontal-stretch: 1;
                 spacing: 2px;
                 MaterialText {
+                    min-width: 0px;
                     text: root.core.name != "" ? root.core.name : root.core.id;
                     style: MaterialTypography.title-medium;
                     color: MaterialPalette.on-surface;
                     wrap: root.compact ? word-wrap : no-wrap;
                     overflow: root.compact ? clip : elide;
+                    accessible-role: AccessibleRole.text;
+                    accessible-label: self.text;
+                }
+                if root.core.engine != "" || root.core.source != "" : MaterialText {
+                    min-width: 0px;
+                    text: root.core.engine + (root.core.engine != "" && root.core.source != "" ? " · " : "")
+                        + CoreText.source-label(root.core.source);
+                    style: MaterialTypography.body-small;
+                    color: MaterialPalette.on-surface-variant;
+                    overflow: elide;
+                }
+                if root.core.source == "user" && root.core.stem != "" && root.core.stem != root.core.name : CoreVersionText {
+                    text: root.core.stem;
+                    style: MaterialTypography.body-small;
+                }
+                CoreVersionText {
+                    text: root.core.version != "" ? root.core.version : @tr("版本未知");
+                }
+                if root.update : CoreVersionText {
+                    text: "→ " + root.core.update-version;
+                }
+                if root.compact : HorizontalLayout {
+                    alignment: start;
+                    padding-top: 4px;
+                    CoreStateBadge { core: root.core; }
                 }
             }
 
@@ -135,35 +162,16 @@ component CoreRow {
                 alignment: start;
                 horizontal-stretch: 0;
                 padding-top: 2px;
-                CoreStateBadge { core: root.core; }
+                HorizontalLayout {
+                    min-width: 152px;
+                    alignment: end;
+                    CoreStateBadge { core: root.core; }
+                }
             }
         }
 
-        if root.core.engine != "" || root.core.source != "" : MaterialText {
-            text: root.core.engine + (root.core.engine != "" && root.core.source != "" ? " · " : "")
-                + CoreText.source-label(root.core.source)
-                + (root.core.source == "user" && root.core.stem != "" && root.core.stem != root.core.name
-                    ? " · " + root.core.stem : "");
-            style: MaterialTypography.body-small;
-            color: MaterialPalette.on-surface-variant;
-            wrap: word-wrap;
-            overflow: clip;
-        }
-        CoreVersionText {
-            text: root.core.version != "" ? root.core.version : @tr("版本未知");
-        }
-        if root.update : CoreVersionText {
-            text: "→ " + root.core.update-version;
-        }
-        if root.compact : HorizontalLayout {
-            alignment: start;
-            padding-top: 4px;
-            CoreStateBadge { core: root.core; }
-        }
-
         if root.core.message != "" : HorizontalLayout {
-            padding-left: root.compact ? 0px : 36px;
-            padding-right: 8px;
+            padding-left: 36px;
             MaterialText {
                 text: root.core.message;
                 style: MaterialTypography.body-small;
@@ -174,8 +182,7 @@ component CoreRow {
         }
 
         if root.downloading : VerticalLayout {
-            padding-left: root.compact ? 0px : 36px;
-            padding-right: 8px;
+            padding-left: 36px;
             padding-top: 4px;
             spacing: 6px;
             HorizontalLayout {
@@ -208,8 +215,7 @@ component CoreRow {
         }
 
         if root.download-failed : HorizontalLayout {
-            padding-left: root.compact ? 0px : 36px;
-            padding-right: 8px;
+            padding-left: 36px;
             MaterialText {
                 text: @tr("下载失败：{}", root.core.download-error);
                 style: MaterialTypography.body-small;
@@ -220,7 +226,7 @@ component CoreRow {
         }
 
         if root.core.capabilities.length > 0 : HorizontalLayout {
-            padding-left: root.compact ? 0px : 36px;
+            padding-left: 36px;
             padding-top: 4px;
             FlexboxLayout {
                 spacing: 6px;
@@ -233,7 +239,7 @@ component CoreRow {
         }
 
         HorizontalLayout {
-            padding-left: root.compact ? 0px : 28px;
+            padding-left: 36px;
             FlexboxLayout {
                 horizontal-stretch: 1;
                 spacing: 0px;
@@ -255,7 +261,9 @@ component CoreRow {
                     clicked => { Cores.cancel-download(root.core.id); }
                 }
                 if root.core.state == "loaded" : TextButton {
-                    text: root.editing ? @tr("收起默认设置") : @tr("默认设置");
+                    // Keep the action's width stable when the editor opens.
+                    text: @tr("默认设置");
+                    accessible-label: root.editing ? @tr("收起默认设置") : self.text;
                     icon: root.editing ? Icons.expand-less : Icons.tune;
                     accessible-expandable: true;
                     accessible-expanded: root.editing;
@@ -410,8 +418,7 @@ component DefaultsEditor {
     }
 }
 
-component GroupCounter {
-    in property <string> group;
+component VisibleCoreCount {
     out property <int> count: round(l.preferred-height / 1px);
 
     x: 0px;
@@ -422,23 +429,18 @@ component GroupCounter {
 
     l := VerticalLayout {
         for core in Cores.items : Rectangle {
-            height: CoreText.in-group(core, root.group) ? 1px : 0px;
+            height: CoreText.matches-filter(core) ? 1px : 0px;
         }
     }
 }
 
-component CoreEntry inherits Rectangle {
+component CoreEntry {
     in property <CoreInfo> core;
     in property <bool> compact;
     property <bool> editing: Cores.default-plugin == root.core.id;
 
-    border-radius: 16px;
-    border-width: root.compact ? 1px : 0px;
-    border-color: MaterialPalette.outline-variant;
-    background: root.compact ? MaterialPalette.surface-container-low : transparent;
-
     VerticalLayout {
-        padding-bottom: root.compact ? 4px : 0px;
+        min-height: 0px;
         CoreRow {
             core: root.core;
             compact: root.compact;
@@ -449,48 +451,9 @@ component CoreEntry inherits Rectangle {
             }
         }
         if root.editing && root.core.state == "loaded" : DefaultsEditor { }
-    }
-}
-
-component CoreGroup {
-    in property <string> title;
-    in property <string> group;
-    in property <bool> compact;
-    min-height: body.min-height;
-    preferred-height: body.preferred-height;
-
-    body := VerticalLayout {
-        spacing: 8px;
-
-        HorizontalLayout {
-            padding-left: 4px;
-            MaterialText {
-                text: root.title;
-                style: MaterialTypography.title-small;
-                color: MaterialPalette.primary;
-            }
-        }
-
         Rectangle {
-            border-radius: 16px;
-            border-width: root.compact ? 0px : 1px;
-            border-color: MaterialPalette.outline-variant;
-            background: root.compact ? transparent : MaterialPalette.surface-container-low;
-
-            VerticalLayout {
-                padding-top: root.compact ? 0px : 8px;
-                padding-bottom: root.compact ? 0px : 8px;
-
-                for core in Cores.items : VerticalLayout {
-                    if CoreText.in-group(core, root.group) : CoreEntry {
-                        core: core;
-                        compact: root.compact;
-                    }
-                    if root.compact && CoreText.in-group(core, root.group) : Rectangle {
-                        height: 8px;
-                    }
-                }
-            }
+            height: 1px;
+            background: MaterialPalette.outline-variant;
         }
     }
 }
@@ -609,10 +572,7 @@ export component CoresPage {
     property <string> header-text: !Cores.online-downloads ? @tr("此版本不在线下载核心，已安装和随附的核心照常可用。")
         : Network.allowed ? @tr("在线核心列表来自 ShinkiEMU 元数据，下载后重启生效。") : @tr("允许联网后可以在线安装和更新核心。");
 
-    installed := GroupCounter { group: "installed"; }
-    available := GroupCounter { group: "available"; }
-    failed := GroupCounter { group: "failed"; }
-    pending := GroupCounter { group: "pending"; }
+    listed := VisibleCoreCount { }
 
     Rectangle {
         background: MaterialPalette.surface;
@@ -715,9 +675,24 @@ export component CoresPage {
             HeaderActions { }
         }
 
-        if Cores.items.length == 0 : SettingGroup {
+        if Cores.engines.length > 0 : HorizontalLayout {
+            alignment: start;
+            ChoiceSelect {
+                width: root.narrow ? parent.width : 320px;
+                label: @tr("支持的引擎");
+                empty-label: @tr("全部引擎");
+                choices: Cores.engines;
+                value: Cores.engine-filter;
+                selected(engine) => { Cores.engine-filter = engine; }
+            }
+        }
+
+        if listed.count == 0 : SettingGroup {
             MaterialText {
-                text: Cores.online-downloads ? @tr("没有找到核心。可以从本地安装核心包，或允许联网后在线安装。") : @tr("没有找到核心。可以从本地安装官方核心包。");
+                accessible-role: AccessibleRole.text;
+                accessible-label: self.text;
+                text: Cores.engine-filter != "" ? @tr("没有匹配此引擎的核心。")
+                    : Cores.online-downloads ? @tr("没有找到核心。可以从本地安装核心包，或允许联网后在线安装。") : @tr("没有找到核心。可以从本地安装官方核心包。");
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
                 wrap: word-wrap;
@@ -725,25 +700,18 @@ export component CoresPage {
             }
         }
 
-        if pending.count > 0 : CoreGroup {
-            title: @tr("待重启（{}）", pending.count);
-            group: "pending";
-            compact: root.narrow;
-        }
-        if failed.count > 0 : CoreGroup {
-            title: @tr("加载失败（{}）", failed.count);
-            group: "failed";
-            compact: root.narrow;
-        }
-        if installed.count > 0 : CoreGroup {
-            title: @tr("已安装（{}）", installed.count);
-            group: "installed";
-            compact: root.narrow;
-        }
-        if Cores.online-downloads && available.count > 0 : CoreGroup {
-            title: @tr("可安装（{}）", available.count);
-            group: "available";
-            compact: root.narrow;
+        if listed.count > 0 : Rectangle {
+            border-radius: 12px;
+            clip: true;
+            background: MaterialPalette.surface-container-low;
+            VerticalLayout {
+                for core in Cores.items : VerticalLayout {
+                    if CoreText.matches-filter(core) : CoreEntry {
+                        core: core;
+                        compact: root.narrow;
+                    }
+                }
+            }
         }
     }
 }

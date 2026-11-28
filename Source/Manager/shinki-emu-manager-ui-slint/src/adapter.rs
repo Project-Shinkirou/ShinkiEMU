@@ -40,6 +40,7 @@ pub struct SlintManagerAdapter {
     patch_downloads: ListModel<PatchDownloadViewModel, PatchDownload>,
     patch_checks: ListModel<PatchCheckViewModel, PatchCheck>,
     cores: ListModel<CoreViewModel, CoreInfo>,
+    core_engines: ListModel<ChoiceViewModel, Choice>,
     default_fields: Rc<VecModel<ConfigField>>,
     default_render_options: ListModel<ChoiceViewModel, Choice>,
     models: ListModel<String, SharedString>,
@@ -104,6 +105,7 @@ impl SlintManagerAdapter {
             patch_downloads: ListModel::new(patch_download),
             patch_checks: ListModel::new(patch_check),
             cores: ListModel::new(core_info),
+            core_engines: ListModel::new(choice),
             default_fields: Rc::new(VecModel::default()),
             default_render_options: ListModel::new(choice),
             models: ListModel::strings(),
@@ -176,6 +178,7 @@ impl SlintManagerAdapter {
 
         let cores = window.global::<Cores>();
         cores.set_items(self.cores.model());
+        cores.set_engines(self.core_engines.model());
         cores.set_default_fields(ModelRc::from(self.default_fields.clone()));
 
         let settings = window.global::<Settings>();
@@ -527,6 +530,7 @@ impl SlintManagerAdapter {
         let cores = self.window.global::<Cores>();
         let view = &model.cores;
         self.cores.update(&view.items);
+        self.core_engines.update(&view.engines);
         cores.set_restart_required(view.restart_required);
         cores.set_updates_available(view.updates_available);
         cores.set_update_all_count(view.update_all_count);
@@ -1060,6 +1064,7 @@ fn core_info(value: &CoreViewModel) -> CoreInfo {
         id: value.id.as_str().into(),
         stem: value.stem.as_str().into(),
         name: value.name.as_str().into(),
+        engine_id: value.engine_id.as_str().into(),
         engine: value.engine.as_str().into(),
         version: value.version.as_str().into(),
         state: value.state.as_str().into(),

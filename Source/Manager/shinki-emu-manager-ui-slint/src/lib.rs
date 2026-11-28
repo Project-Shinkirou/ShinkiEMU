@@ -405,6 +405,8 @@ pub struct GameSettingsViewModel {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CoresViewModel {
     pub items: Vec<CoreViewModel>,
+    /// Engine families supported by the current platform, keyed by family ID.
+    pub engines: Vec<ChoiceViewModel>,
     pub restart_required: bool,
     /// Installed cores with a newer release, for the navigation badge.
     pub updates_available: i32,
@@ -442,6 +444,8 @@ pub struct CoreViewModel {
     /// Directory stem for disk actions and package logs; empty if there is no directory.
     pub stem: String,
     pub name: String,
+    /// Stable family ID, empty when the package's engine is unknown.
+    pub engine_id: String,
     pub engine: String,
     pub version: String,
     /// `loaded | installed | loading | failed | pending-install | pending-update | pending-removal | available`

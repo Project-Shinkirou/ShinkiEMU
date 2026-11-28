@@ -67,7 +67,9 @@ Settings removed by a core update are removed from saved configuration automatic
 
 Allow networking in Settings before synchronizing metadata or downloading cores. In the core management page, refresh the catalog and install or update the desired core for your platform. The catalog supplies the version, ABI, download URL and hash. Complete the session and restart Manager when an update requires replacing a loaded library. Keep the whole core directory, including `core.json`, dependencies, `Resources/` when present and licenses; a DLL copied alone is not an installation.
 
-When Manager starts in a new process, it applies staged installations and removals before showing the core list. **Installed, not loaded** means the package is on disk but Manager has not loaded its native code. If a package is malformed or two directories declare the same core, use the directory name on the card to choose which copy to remove or inspect. Built-in cores cannot be uninstalled.
+The core page lists the engine families supported on your platform, even offline. Choose an engine to filter the core list, or clear the filter to see every package, including packages whose engine is unknown. Recognition, installation, and gameplay compatibility are separate.
+
+When Manager starts in a new process, it applies staged installations and removals before showing the core list. **Installed, not loaded** means the package is on disk but Manager has not loaded its native code. If a package is malformed or two directories declare the same core, use the directory name in the row to choose which copy to remove or inspect. Built-in cores cannot be uninstalled.
 
 If Manager cannot read the core directory, the game library still opens and the notice shows the cause. Restore the directory or its permissions. Restart Manager if core preparation had already failed.
 

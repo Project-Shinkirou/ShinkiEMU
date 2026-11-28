@@ -42,13 +42,20 @@ fn consume_generated(cores: &toml::Value, targets: &str, target: &str, enabled: 
         module.to_str().unwrap(),
         cores["cores"].as_array().unwrap().len()
     );
-    for core in cores["cores"].as_array().unwrap() {
+    let rows = cores["cores"].as_array().unwrap();
+    for core in rows {
         let id = core["id"].as_str().unwrap();
         let family = core["family_id"].as_str().unwrap();
+        let family_name = rows
+            .iter()
+            .find(|row| row["family_id"].as_str() == Some(family))
+            .unwrap()["family_name"]
+            .as_str()
+            .unwrap();
         let name = core["display_name"].as_str().unwrap();
         let supported = enabled && declared(core, "supported_targets", target);
         consumer.push_str(&format!(
-            "let entry = catalog::lookup({id:?}).unwrap();\nassert_eq!((entry.family_id, entry.display_name, entry.supported), ({family:?}, {name:?}, {supported}));\nprintln!(\"{{}}\\t{{}}\\t{{}}\\t{{}}\", entry.plugin_id, entry.family_id, entry.display_name, entry.supported);\n"
+            "let entry = catalog::lookup({id:?}).unwrap();\nassert_eq!((entry.family_id, entry.family_name, entry.display_name, entry.supported), ({family:?}, {family_name:?}, {name:?}, {supported}));\nprintln!(\"{{}}\\t{{}}\\t{{}}\\t{{}}\", entry.plugin_id, entry.family_id, entry.display_name, entry.supported);\n"
         ));
         let first_party = core.get("attribution").is_none();
         consumer.push_str(&format!("assert_eq!(entry.first_party, {first_party});\n"));
@@ -149,6 +156,7 @@ fn generated_strings_preserve_escaping() {
     let (mut cores, targets) = inventory();
     let core = &mut cores["cores"][0];
     core["display_name"] = "A \"quoted\" engine\\with\na new line 🦊".into();
+    core["family_name"] = "Engine \"Family\" \\ イ".into();
     consume_generated(&cores, &targets, "x86_64-pc-windows-msvc", true);
 }
 
@@ -170,9 +178,13 @@ fn malformed_family_fields_and_duplicate_plugin_ids_are_rejected() {
         .unwrap()
         .remove("family_id");
     assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err());
-    let mut changed = cores.clone();
-    changed["cores"][0]["display_name"] = " \n".into();
-    assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err());
+    for field in ["display_name", "family_name"] {
+        let mut changed = cores.clone();
+        changed["cores"][0][field] = " \n".into();
+        assert!(
+            generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err()
+        );
+    }
     let mut changed = cores;
     changed["cores"][1]["id"] = changed["cores"][0]["id"].clone();
     assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err());
