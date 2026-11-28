@@ -336,9 +336,7 @@ export component GameView inherits Rectangle {
                 }
 
                 if event.kind == PointerEventKind.cancel {
-                    Session.input("pointer.primary", false, 0);
-                    Session.input("pointer.secondary", false, 0);
-                    Session.input("pointer.middle", false, 0);
+                    Session.input("pointer.cancel", false, 0);
                     return;
                 }
                 if event.kind != PointerEventKind.down && event.kind != PointerEventKind.up {

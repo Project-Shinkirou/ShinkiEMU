@@ -114,6 +114,10 @@
 
 #define ShinkiEmuINPUT_WINDOW 5
 
+#define ShinkiEmuINPUT_POINTER_CANCEL 6
+
+#define ShinkiEmuINPUT_POINTER_CANCEL_VERSION 1
+
 #define ShinkiEmuBUTTON_PRIMARY 1
 
 #define ShinkiEmuBUTTON_SECONDARY 2
@@ -722,6 +726,11 @@ typedef struct ShinkiEmuFrameIdentity {
  * INPUT_KEY with an empty physical key and UTF-8 logical text (up to 32 KiB),
  * pressed=1 and repeat=0. Wheel x/y are fractional line detents, not pixels.
  * pressed/repeat and window booleans are exactly 0 or 1.
+ * A core exposing `shinki.emu.input_pointer_cancel` version 1 returns a
+ * `Header` using ABI v3. `INPUT_POINTER_CANCEL` clears the held `button`
+ * without completing a click. If the frame is unavailable, use the last
+ * accepted point. The host sends it only after negotiation; pressed and
+ * repeat are zero.
  */
 typedef struct ShinkiEmuInputEvent {
   uint32_t kind;

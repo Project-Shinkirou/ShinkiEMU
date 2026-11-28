@@ -489,7 +489,22 @@ fn touch_reveals_game_menu_button_without_taking_game_input() {
             );
         }
 
-        // A cancelled single touch is released to the game.
+        // Grab withdrawal must reach the core as a cancel, not a click.
+        f.software.dispatch_event(WindowEvent::PointerPressed {
+            position: LogicalPosition::new(400.0, 200.0),
+            button: PointerEventButton::Left,
+        });
+        f.software.dispatch_event(WindowEvent::PointerExited);
+        assert_inputs(
+            f.inputs(),
+            vec![
+                down(400.0, 200.0),
+                vec![Input("pointer.cancel".into(), false, 0.0)],
+            ],
+            "pointer grab withdrawal",
+        );
+
+        // Slint 1.18 translates single-touch Cancelled into Up before TouchArea.
         f.touch(0, (400.0, 200.0), TouchPhase::Started);
         f.touch(0, (400.0, 200.0), TouchPhase::Cancelled);
         assert_inputs(

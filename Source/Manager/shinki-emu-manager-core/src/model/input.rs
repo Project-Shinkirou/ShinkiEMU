@@ -172,6 +172,13 @@ pub enum FamilyEvent {
         state: KeyState,
         displayed: Option<super::FrameIdentity>,
     },
+    /// Withdraw a held button without completing a click. The position is
+    /// used only to synthesize a normal move/release for older cores.
+    PointerCancel {
+        button: PointerButton,
+        legacy_position: Option<(f32, f32)>,
+        displayed: Option<super::FrameIdentity>,
+    },
     /// Horizontal and vertical wheel units; one unit is one OS wheel detent,
     /// and high-resolution wheel input may use fractional values.
     Wheel {
@@ -204,6 +211,10 @@ impl FamilyEvent {
     pub(crate) fn validate(&self) -> FamilyResult<()> {
         match self {
             Self::PointerMove { x, y, .. }
+            | Self::PointerCancel {
+                legacy_position: Some((x, y)),
+                ..
+            }
             | Self::Wheel {
                 delta_x: x,
                 delta_y: y,

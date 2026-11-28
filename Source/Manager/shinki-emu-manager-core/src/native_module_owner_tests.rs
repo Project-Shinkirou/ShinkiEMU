@@ -29,6 +29,57 @@ fn request() -> NativeOpenRequest {
 }
 
 #[test]
+fn pointer_cancel_negotiates_without_changing_real_clicks_or_legacy_release() {
+    use crate::model::{FamilyEvent, KeyState, PointerButton};
+
+    for supported in [true, false] {
+        let mut fixture = Fixture::new("pointer-cancel", "fixture", "fixture");
+        fixture.pointer_cancel = supported;
+        let calls = fixture.calls.clone();
+        let mut plugin = test_native::install(0, fixture);
+        let mut session = plugin.open(request()).unwrap();
+        let button = |state| FamilyEvent::PointerButton {
+            button: PointerButton::Primary,
+            state,
+            displayed: None,
+        };
+        session
+            .input(
+                &[
+                    button(KeyState::Pressed),
+                    FamilyEvent::PointerCancel {
+                        button: PointerButton::Primary,
+                        legacy_position: Some((8.0, 9.0)),
+                        displayed: None,
+                    },
+                    button(KeyState::Pressed),
+                    button(KeyState::Released),
+                ],
+                None,
+            )
+            .unwrap();
+        let calls = calls.lock();
+        let events: Vec<_> = calls
+            .iter()
+            .filter(|call| call.name == "input")
+            .map(|call| call.key.as_str())
+            .collect();
+        let expected: &[&str] = if supported {
+            &["button:1:1", "cancel:1", "button:1:1", "button:1:0"]
+        } else {
+            &[
+                "button:1:1",
+                "pointer-move",
+                "button:1:0",
+                "button:1:1",
+                "button:1:0",
+            ]
+        };
+        assert_eq!(events, expected);
+    }
+}
+
+#[test]
 fn one_explicit_owner_spans_reopen_and_cpu_lease_outlives_its_destruction() {
     let mut fixture = Fixture::new("owner-lifetime", "fixture", "fixture");
     fixture.module_owner = true;

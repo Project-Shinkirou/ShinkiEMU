@@ -44,6 +44,8 @@ The `--metadata` input keeps cbindgen's own `cargo metadata` call from rewriting
 
 Only C-layout values cross the boundary: versioned headers, bounded borrowed spans, opaque handles, status codes and function pointers. No Rust-owned containers or unwinding cross the ABI. Libraries and immutable descriptor storage remain resident. Query accepts a version and an output table pointer; unsupported versions leave the output null. Query does no I/O, starts no workers and installs no logger.
 
+Manager negotiates `shinki.emu.input_pointer_cancel` v1 before sending `INPUT_POINTER_CANCEL`. This withdraws a held button without a click and uses its last accepted position when no frame is current. Release from a real click is still `INPUT_POINTER_BUTTON`; older cores continue to receive legacy release events.
+
 ## Directory recognition
 
 `shinki_emu_manager_core::detection::detect_game_directory(&Path, &NativeCancellation)` returns `Result<Vec<EngineDetection>, DetectionError>`. A detection contains only `family_id` and `format`; it is independent of installed plugins and native `FamilyProbeCandidate` reports. One result per family is returned in family-ID order. Multiple families require caller selection; an empty vector means unrecognized. Recognition does not establish implementation compatibility or successful execution.

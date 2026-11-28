@@ -29,6 +29,7 @@ pub struct Fixture {
     pub config: bool,
     pub path_field: bool,
     pub config_paths: Option<&'static abi::ConfigPathsV1>,
+    pub pointer_cancel: bool,
     pub calls: Arc<Mutex<Vec<Call>>>,
     pub entered: Option<std::sync::mpsc::Sender<()>>,
     pub gate: Option<std::sync::mpsc::Receiver<()>>,
@@ -65,6 +66,7 @@ impl Fixture {
             config: false,
             path_field: false,
             config_paths: None,
+            pointer_cancel: false,
             calls: Arc::new(Mutex::new(Vec::new())),
             entered: None,
             gate: None,
@@ -430,7 +432,13 @@ unsafe extern "C" fn input(
             return status;
         }
         let key = unsafe { value.physical_key.text(256) }.unwrap();
-        record(&session.calls, "input", key.to_owned());
+        let description = match value.kind {
+            abi::INPUT_POINTER_MOVE => "pointer-move".to_owned(),
+            abi::INPUT_POINTER_BUTTON => format!("button:{}:{}", value.button, value.pressed),
+            abi::INPUT_POINTER_CANCEL => format!("cancel:{}", value.button),
+            _ => key.to_owned(),
+        };
+        record(&session.calls, "input", description);
         if session.finish_on_key == Some(key) {
             session.finish.store(true, Ordering::Release);
         }
@@ -638,6 +646,14 @@ unsafe extern "C" fn extension<const N: usize>(
         Ok(name) => name,
         Err(_) => return abi::UNSUPPORTED,
     };
+    if name == abi::INPUT_POINTER_CANCEL_EXTENSION
+        && version == abi::INPUT_POINTER_CANCEL_VERSION
+        && fixture::<N, _>(|value| value.pointer_cancel)
+    {
+        static HEADER: abi::Header = abi::Header::of::<abi::Header>();
+        unsafe { *out = (&HEADER as *const abi::Header).cast() };
+        return abi::OK;
+    }
     if name == abi::SESSION_MENU_EXTENSION && version == abi::SESSION_MENU_VERSION {
         unsafe {
             *out = (&TEST_MENU_API as *const abi::SessionMenuApi).cast();

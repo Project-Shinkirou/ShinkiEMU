@@ -119,6 +119,27 @@ impl ShinkiEmuManagerController {
         {
             return Err("SHINKI_EMU_FAMILY_SESSION_NOT_ACTIVE".into());
         }
+        if control == "pointer.cancel" {
+            let controls = ["pointer.primary", "pointer.secondary", "pointer.middle"];
+            let count = controls
+                .iter()
+                .filter(|&&id| self.held_controls.contains(id))
+                .count();
+            if self.pending_events.len() + count > shinki_emu_manager_core::model::MAX_INPUT_EVENTS {
+                return Err("SHINKI_EMU_INPUT_QUEUE_FULL".into());
+            }
+            let displayed = self.mailbox.displayed_identity()?;
+            for id in controls {
+                if self.held_controls.remove(id) {
+                    self.pending_events.push(FamilyEvent::PointerCancel {
+                        button: pointer_button(id).expect("pointer cancel control"),
+                        legacy_position: None,
+                        displayed,
+                    });
+                }
+            }
+            return Ok(());
+        }
         if self.pending_events.len() >= shinki_emu_manager_core::model::MAX_INPUT_EVENTS {
             return Err("SHINKI_EMU_INPUT_QUEUE_FULL".into());
         }
@@ -224,12 +245,7 @@ impl ShinkiEmuManagerController {
 
     pub(super) fn release_inputs(&mut self) -> Result<(), String> {
         let held = self.held_controls.iter().cloned().collect::<Vec<_>>();
-        let required = held.len()
-            + self.physical_keys.len()
-            + held
-                .iter()
-                .filter(|control| pointer_button(control).is_some())
-                .count();
+        let required = held.len() + self.physical_keys.len();
         if self.pending_events.len().saturating_add(required)
             > shinki_emu_manager_core::model::MAX_INPUT_EVENTS
         {
@@ -245,18 +261,17 @@ impl ShinkiEmuManagerController {
         }
         for control in held {
             let event = if let Some(button) = pointer_button(&control) {
-                if let Some((identity, info)) = self.mailbox.displayed()? {
-                    self.pending_events.push(FamilyEvent::PointerMove {
-                        x: self.pointer_position.0 * info.width as f32 / info.logical_width as f32,
-                        y: self.pointer_position.1 * info.height as f32
-                            / info.logical_height as f32,
-                        displayed: Some(identity),
-                    });
-                }
-                FamilyEvent::PointerButton {
+                let displayed = self.mailbox.displayed()?;
+                FamilyEvent::PointerCancel {
                     button,
-                    state: KeyState::Released,
-                    displayed: self.mailbox.displayed_identity()?,
+                    legacy_position: displayed.map(|(_, info)| {
+                        (
+                            self.pointer_position.0 * info.width as f32 / info.logical_width as f32,
+                            self.pointer_position.1 * info.height as f32
+                                / info.logical_height as f32,
+                        )
+                    }),
+                    displayed: displayed.map(|(identity, _)| identity),
                 }
             } else {
                 let code = key_code(&control)

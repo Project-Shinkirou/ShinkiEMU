@@ -237,6 +237,9 @@ pub const INPUT_POINTER_MOVE: u32 = 2;
 pub const INPUT_POINTER_BUTTON: u32 = 3;
 pub const INPUT_WHEEL: u32 = 4;
 pub const INPUT_WINDOW: u32 = 5;
+pub const INPUT_POINTER_CANCEL: u32 = 6;
+pub const INPUT_POINTER_CANCEL_EXTENSION: &[u8] = b"shinki.emu.input_pointer_cancel";
+pub const INPUT_POINTER_CANCEL_VERSION: u32 = 1;
 /// Pointer coordinates are pixels in `displayed` frame, not window or logical
 /// stage coordinates. Core applies its own frame-to-game/UI mapping once.
 /// Physical keys use winit code names (KeyA, Digit1, Equal, Backquote, Enter).
@@ -245,6 +248,11 @@ pub const INPUT_WINDOW: u32 = 5;
 /// INPUT_KEY with an empty physical key and UTF-8 logical text (up to 32 KiB),
 /// pressed=1 and repeat=0. Wheel x/y are fractional line detents, not pixels.
 /// pressed/repeat and window booleans are exactly 0 or 1.
+/// A core exposing `shinki.emu.input_pointer_cancel` version 1 returns a
+/// `Header` using ABI v3. `INPUT_POINTER_CANCEL` clears the held `button`
+/// without completing a click. If the frame is unavailable, use the last
+/// accepted point. The host sends it only after negotiation; pressed and
+/// repeat are zero.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct InputEvent {

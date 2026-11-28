@@ -159,8 +159,32 @@ unsafe fn initialize_android_context(
     checked("android_context.initialize", status, error).map_err(FamilyLoadError::ProviderError)
 }
 
+fn supports_pointer_cancel(api: &abi::CoreApi) -> Result<bool, FamilyLoadError> {
+    let mut header = std::ptr::null();
+    let status = unsafe {
+        api.extension.unwrap()(
+            abi::Bytes::new(abi::INPUT_POINTER_CANCEL_EXTENSION),
+            abi::INPUT_POINTER_CANCEL_VERSION,
+            &mut header,
+        )
+    };
+    if status == abi::UNSUPPORTED && header.is_null() {
+        return Ok(false);
+    }
+    let header = header.cast::<abi::Header>();
+    if status != abi::OK
+        || header.is_null()
+        || !header.is_aligned()
+        || !unsafe { (*header).accepts::<abi::Header>() }
+    {
+        return Err(FamilyLoadError::AbiLayout);
+    }
+    Ok(true)
+}
+
 struct NativeModule {
     api: abi::CoreApi,
+    pointer_cancel: bool,
     resources: Option<crate::native_module_owner::ModuleResources>,
     closed: bool,
 }
@@ -318,6 +342,7 @@ impl LoadedFamilyPlugin {
             unsafe { super::native_config::descriptor(descriptor.assume_init()) }
                 .map_err(FamilyLoadError::DescriptorError)?;
         let path_rules = native_config::path_rules(&api, &configuration)?;
+        let pointer_cancel = supports_pointer_cancel(&api)?;
         let resources = crate::native_module_owner::ModuleResources::discover(&api)
             .map_err(FamilyLoadError::ProviderError)?;
         let mut extension = std::ptr::null();
@@ -377,6 +402,7 @@ impl LoadedFamilyPlugin {
         Ok(Self {
             inner: Rc::new(NativeModule {
                 api,
+                pointer_cancel,
                 resources,
                 closed: false,
             }),
@@ -636,6 +662,15 @@ fn native_window(state: WindowState) -> abi::WindowState {
         scale_factor: state.scale_factor,
     }
 }
+fn native_button(button: PointerButton) -> u32 {
+    match button {
+        PointerButton::Primary => abi::BUTTON_PRIMARY,
+        PointerButton::Secondary => abi::BUTTON_SECONDARY,
+        PointerButton::Middle => abi::BUTTON_MIDDLE,
+        PointerButton::Back => 4,
+        PointerButton::Forward => 5,
+    }
+}
 
 pub struct NativeSession {
     inner: Option<Rc<NativeModule>>,
@@ -741,18 +776,40 @@ impl NativeSession {
                     displayed: event_frame,
                 } => {
                     raw.kind = abi::INPUT_POINTER_BUTTON;
-                    raw.button = match button {
-                        PointerButton::Primary => abi::BUTTON_PRIMARY,
-                        PointerButton::Secondary => abi::BUTTON_SECONDARY,
-                        PointerButton::Middle => abi::BUTTON_MIDDLE,
-                        PointerButton::Back => 4,
-                        PointerButton::Forward => 5,
-                    };
+                    raw.button = native_button(*button);
                     raw.pressed = (*state != KeyState::Released) as u32;
                     raw.displayed = event_frame
                         .or(displayed)
                         .map(Into::into)
                         .unwrap_or_default();
+                }
+                FamilyEvent::PointerCancel {
+                    button,
+                    legacy_position,
+                    displayed: event_frame,
+                } => {
+                    raw.displayed = event_frame
+                        .or(displayed)
+                        .map(Into::into)
+                        .unwrap_or_default();
+                    raw.button = native_button(*button);
+                    raw.kind = if self.inner.as_ref().is_some_and(|m| m.pointer_cancel) {
+                        abi::INPUT_POINTER_CANCEL
+                    } else {
+                        if let Some((x, y)) = *legacy_position {
+                            self.pointer = (f64::from(x), f64::from(y));
+                            (raw.x, raw.y) = self.pointer;
+                            let move_event = abi::InputEvent {
+                                kind: abi::INPUT_POINTER_MOVE,
+                                button: 0,
+                                ..raw
+                            };
+                            self.call("input", |api, handle, error| unsafe {
+                                api.input.unwrap()(handle, &move_event, 1, error)
+                            })?;
+                        }
+                        abi::INPUT_POINTER_BUTTON
+                    };
                 }
                 FamilyEvent::Wheel { delta_x, delta_y } => {
                     raw.kind = abi::INPUT_WHEEL;
