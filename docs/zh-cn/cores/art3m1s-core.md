@@ -7,7 +7,7 @@ description: Artemis / Art3m1s 的格式、原生行为与限制。
 
 `plugin_id: art3m1s-core` · 引擎家族: Artemis
 
-上游：[Alphaly2K/art3m1s-core](https://github.com/Alphaly2K/art3m1s-core)。适配 fork：[Project-Shinkirou/art3m1s-core 的 shinki-android-isolation 分支](https://github.com/Project-Shinkirou/art3m1s-core/tree/shinki-android-isolation)。
+发布身份跟随上游发布标签 [v0.4.0-fix.1](https://github.com/Alphaly2K/art3m1s-core/releases/tag/v0.4.0-fix.1)。`Cargo.lock` 固定 [ShinkiEMU 适配提交](https://github.com/Project-Shinkirou/art3m1s-core/tree/a761f0926ee3c7280d696c8c36763500cd319194)，仍保留标签之后的上游修复，包括指针拖拽处理。
 
 ## 格式
 

@@ -7,7 +7,7 @@ description: Artemis / Art3m1s のフォーマット、ネイティブ動作、�
 
 `plugin_id: art3m1s-core` · エンジンファミリー: Artemis
 
-上流：[Alphaly2K/art3m1s-core](https://github.com/Alphaly2K/art3m1s-core)。適応 fork：[Project-Shinkirou/art3m1s-core の shinki-android-isolation ブランチ](https://github.com/Project-Shinkirou/art3m1s-core/tree/shinki-android-isolation)。
+リリースの識別には上流の公開タグ [v0.4.0-fix.1](https://github.com/Alphaly2K/art3m1s-core/releases/tag/v0.4.0-fix.1) を使います。`Cargo.lock` は [ShinkiEMU のアダプターリビジョン](https://github.com/Project-Shinkirou/art3m1s-core/tree/a761f0926ee3c7280d696c8c36763500cd319194) を固定し、タグ以降のポインターのドラッグ処理などの修正も保持します。
 
 ## フォーマット
 

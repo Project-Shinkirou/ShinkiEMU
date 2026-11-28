@@ -7,7 +7,7 @@ description: Formats, native behavior and limits of Artemis / Art3m1s.
 
 `plugin_id: art3m1s-core` · Engine family: Artemis
 
-Upstream: [Alphaly2K/art3m1s-core](https://github.com/Alphaly2K/art3m1s-core). Adaptation fork: [Project-Shinkirou/art3m1s-core, shinki-android-isolation branch](https://github.com/Project-Shinkirou/art3m1s-core/tree/shinki-android-isolation).
+Release identity follows the published upstream tag [v0.4.0-fix.1](https://github.com/Alphaly2K/art3m1s-core/releases/tag/v0.4.0-fix.1). `Cargo.lock` pins the exact [ShinkiEMU adapter revision](https://github.com/Project-Shinkirou/art3m1s-core/tree/a761f0926ee3c7280d696c8c36763500cd319194), which retains post-tag upstream fixes, including pointer drag handling.
 
 ## Formats
 
