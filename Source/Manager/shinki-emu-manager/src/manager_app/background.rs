@@ -624,7 +624,6 @@ impl ShinkiEmuManagerController {
                             .into(),
                     );
                 }
-                report.missing = 0;
             }
             self.apply_scan_report_inner(kind, report, automatic.as_ref(), scan)
         })();
@@ -653,10 +652,14 @@ impl ShinkiEmuManagerController {
         } else {
             None
         };
+        let update_missing = automatic.is_none();
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        let update_missing = update_missing && optical.is_none();
         tracing::info!(
             event = "shinki.emu.manager.probe_refresh",
             games = report.games.len(),
-            missing = report.missing,
+            missing_local_games = report.missing_local_games.len(),
+            skipped_io = report.skipped_io,
             skipped_candidates = report.skipped_candidates,
             traversal_limited = report.traversal_limited,
             cache_hits = report.cache_hits
@@ -783,17 +786,8 @@ impl ShinkiEmuManagerController {
                 }
             }
         }
-        if report.missing > 0 {
-            self.diagnostic = tr!(
-                "有 {count} 个游戏目录当前不可用。资料库信息已保留，恢复目录后点击“刷新资料库”。",
-                count = report.missing
-            );
-            self.diagnostic_severity = "warning";
-        }
-        #[cfg(target_os = "android")]
-        if let Some(error) = report.saf_error {
-            self.diagnostic = error;
-            self.diagnostic_severity = "warning";
+        if update_missing {
+            self.apply_missing_local_games(report.missing_local_games)?;
         }
         if self.selected_case_id.is_none() && automatic.is_none() {
             self.selected_case_id = self.first_visible_game()?;

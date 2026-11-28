@@ -20,6 +20,37 @@ pub(super) fn canonical_directory(path: &Path) -> Result<Option<PathBuf>, String
     }
 }
 
+fn confirmed_missing_local_directory(path: &Path) -> bool {
+    if !path.is_absolute() {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        use windows::Win32::{
+            Storage::FileSystem::GetDriveTypeW, System::WindowsProgramming::DRIVE_FIXED,
+        };
+        use windows::core::PCWSTR;
+
+        let Some(Component::Prefix(prefix)) = path.components().next() else {
+            return false;
+        };
+        let drive = match prefix.kind() {
+            Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) => drive,
+            _ => return false,
+        };
+        let root = [u16::from(drive), u16::from(b':'), u16::from(b'\\'), 0];
+        // SAFETY: the drive root is a live, nul-terminated UTF-16 string.
+        if unsafe { GetDriveTypeW(PCWSTR(root.as_ptr())) } != DRIVE_FIXED {
+            return false;
+        }
+    }
+    // A broken link still exists, and a lost parent cannot prove that its
+    // child was deleted rather than temporarily disconnected.
+    matches!(fs::symlink_metadata(path), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
+        && path.parent().is_some_and(|parent| fs::read_dir(parent).is_ok())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ScanKind {
     Full,
@@ -78,7 +109,8 @@ pub(super) struct SafProbe {
 pub(super) struct ScanReport {
     pub(super) games: Vec<GameProbe>,
     pub(super) unrecognized_root: Option<UnrecognizedRoot>,
-    pub(super) missing: usize,
+    pub(super) missing_local_games: BTreeSet<String>,
+    pub(super) skipped_io: usize,
     pub(super) cache_hits: usize,
     pub(super) cache_error: Option<String>,
     pub(super) skipped_candidates: usize,
@@ -93,7 +125,7 @@ impl ScanReport {
         if self.saf_error.is_some() {
             return true;
         }
-        self.missing != 0
+        self.skipped_io != 0
     }
 
     fn record_traversal_limit(&mut self, scope: &str) {
@@ -141,23 +173,20 @@ pub(super) fn scan(
         if shinki_emu_manager::platform::android_tree::is_library_uri(&game.location) {
             continue;
         }
-        match canonical_directory(Path::new(&game.location))? {
-            Some(path) if excluded.contains(&path) => continue,
-            Some(path) if !shinki_emu_patch::is_staging_path(&path) => {
+        let location = Path::new(&game.location);
+        match canonical_directory(location) {
+            Ok(Some(path)) if excluded.contains(&path) => continue,
+            Ok(Some(path)) if !shinki_emu_patch::is_staging_path(&path) => {
                 known.entry(path).or_default().push(game.game_id.clone())
             }
-            Some(_) => continue,
-            None => {
-                report.missing += 1;
-                report.games.push(GameProbe {
-                    path: PathBuf::from(&game.location),
-                    game_ids: vec![game.game_id.clone()],
-                    detections: Vec::new(),
-                    patch_profile: None,
-                    #[cfg(target_os = "android")]
-                    saf: None,
-                });
+            Ok(Some(_)) => continue,
+            Ok(None) => {
+                report.skipped_io += 1;
+                if confirmed_missing_local_directory(location) {
+                    report.missing_local_games.insert(game.game_id.clone());
+                }
             }
+            Err(_) => report.skipped_io += 1,
         }
     }
     let mut roots = BTreeSet::new();
@@ -171,8 +200,8 @@ pub(super) fn scan(
         if root.to_str().is_some_and(shinki_emu_manager::platform::android_tree::is_library_uri) {
             continue;
         }
-        let path = match canonical_directory(&root)? {
-            Some(path) if shinki_emu_patch::is_staging_path(&path) => {
+        let path = match canonical_directory(&root) {
+            Ok(Some(path)) if shinki_emu_patch::is_staging_path(&path) => {
                 if request.kind == ScanKind::Full {
                     continue;
                 }
@@ -180,12 +209,11 @@ pub(super) fn scan(
                     "SHINKI_EMU_PATCH_INVALID_REQUEST: private staging cannot be imported".into(),
                 );
             }
-            Some(path) => path,
-            _ if request.kind == ScanKind::Full => {
-                report.missing += 1;
+            Ok(Some(path)) => path,
+            Ok(None) | Err(_) => {
+                report.skipped_io += 1;
                 continue;
             }
-            _ => return Err("SHINKI_EMU_GAME_DIRECTORY_INVALID".into()),
         };
         if request.offer_unrecognized && !known.contains_key(&path) && !excluded.contains(&path) {
             selected = Some(UnrecognizedRoot {
@@ -246,7 +274,10 @@ pub(super) fn scan(
                     None
                 }
                 Err(DetectionError::Cancelled) => return Err("SHINKI_EMU_SCAN_CANCELLED".into()),
-                Err(DetectionError::Io(error)) => return Err(format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}")),
+                Err(DetectionError::Io(_)) => {
+                    report.skipped_io += 1;
+                    None
+                }
             };
             let examined = detected.is_some();
             let detections = detected.unwrap_or_default();
@@ -277,13 +308,19 @@ pub(super) fn scan(
                 recognized.push(path);
             } else {
                 let mut children = Vec::new();
-                for entry in
-                    fs::read_dir(&path).map_err(directory_entry_error)?
-                {
-                    let entry = entry.map_err(directory_entry_error)?;
-                    let kind = entry
-                        .file_type()
-                        .map_err(directory_entry_error)?;
+                let Ok(entries) = fs::read_dir(&path) else {
+                    report.skipped_io += 1;
+                    continue;
+                };
+                for entry in entries {
+                    let Ok(entry) = entry else {
+                        report.skipped_io += 1;
+                        continue;
+                    };
+                    let Ok(kind) = entry.file_type() else {
+                        report.skipped_io += 1;
+                        continue;
+                    };
                     if selected.is_some() && kind.is_file() {
                         saw_file = true;
                     }
@@ -323,10 +360,6 @@ pub(super) fn scan(
     Ok(report)
 }
 
-fn directory_entry_error(error: std::io::Error) -> String {
-    format!("SHINKI_EMU_GAME_DIRECTORY_ENUMERATION: {error}")
-}
-
 #[cfg(target_os = "android")]
 fn scan_saf(
     rules: &shinki_emu_manager_core::detection::DeclaredRules,
@@ -347,9 +380,8 @@ fn scan_saf(
             DetectionError::ReadLimit if scope == "candidate" => report.skipped_candidates += 1,
             DetectionError::ReadLimit => report.record_traversal_limit(scope),
             DetectionError::Io(error) => {
-                let error = format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}");
-                tracing::warn!(event = "shinki.emu.android.library_tree_scan_failed", diagnostic_code = %error);
-                report.saf_error.get_or_insert(error);
+                report.skipped_io += 1;
+                report.saf_error.get_or_insert_with(|| format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}"));
             }
         }
         Ok(())

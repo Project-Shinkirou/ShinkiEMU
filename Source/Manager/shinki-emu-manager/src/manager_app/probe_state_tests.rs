@@ -133,7 +133,7 @@ fn scanning_existing_aliases_keeps_both_records_without_location_conflict() {
 }
 
 #[test]
-fn unavailable_paths_and_no_match_preserve_records_but_disable_launch() {
+fn missing_local_directory_hides_only_the_game_and_restores_it_on_refresh() {
     let root = tempfile::tempdir().unwrap();
     let path = game(root.path());
     let data = root.path().join("manager");
@@ -146,17 +146,43 @@ fn unavailable_paths_and_no_match_preserve_records_but_disable_launch() {
     assert!(app.candidates.is_empty());
     assert_eq!(app.game(&id).unwrap(), saved);
     assert!(!app.model().unwrap().selection.game.launchable);
+    assert_eq!(app.model().unwrap().library.games.len(), 1);
     fs::write(path.join("boot.hcb"), hcb()).unwrap();
     scan_once(&mut app, &path);
     assert_eq!(app.candidates[&id].plugin_id, "rfvp");
-    fs::remove_dir_all(&path).unwrap();
-    app.refresh_library().unwrap();
-    settle_background(&mut app);
+    let moved = path.with_file_name("offline-copy");
+    fs::rename(&path, &moved).unwrap();
+    let hidden = prepared(&mut app);
+    assert!(hidden.library.games.is_empty());
+    assert!(hidden.library.selected_id.is_empty());
     assert_eq!(app.game(&id).unwrap(), saved);
     assert!(app.candidates.is_empty());
+    assert!(app.library.excluded_games().unwrap().is_empty());
     drop(app);
-    let app = ShinkiEmuManagerController::open_library(data, FrameMailbox::new(), Vec::new()).unwrap();
-    assert!(app.candidates.is_empty(), "no-match must persist across reopen");
+
+    let mut reopened = controller(&data);
+    assert!(reopened.model().unwrap().library.games.is_empty());
+    fs::rename(moved, &path).unwrap();
+    let restored = prepared(&mut reopened);
+    assert_eq!(restored.library.games.len(), 1);
+    assert_eq!(restored.library.selected_id, id);
+    assert_eq!(reopened.game(&id).unwrap(), saved);
+    assert_eq!(reopened.candidates[&id].plugin_id, "rfvp");
+}
+
+#[test]
+fn missing_storage_parent_does_not_hide_its_game() {
+    let root = tempfile::tempdir().unwrap();
+    let volume = root.path().join("storage");
+    let path = game(&volume);
+    let mut app = controller(&root.path().join("manager"));
+    let id = super::recognition_tests::import(&mut app, &path);
+    fs::rename(&volume, root.path().join("offline")).unwrap();
+
+    let refreshed = prepared(&mut app);
+    assert_eq!(refreshed.library.games.len(), 1);
+    assert_eq!(refreshed.library.selected_id, id);
+    assert!(!refreshed.selection.game.launchable);
 }
 
 #[test]
@@ -265,23 +291,28 @@ fn cancel_keeps_interactive_import_visible_until_worker_settles() {
 
 #[cfg(windows)]
 #[test]
-fn unreadable_game_file_is_a_visible_io_error_not_a_bounded_scan() {
+fn unreadable_game_file_is_skipped_without_stopping_sibling_discovery() {
     use std::os::windows::fs::OpenOptionsExt;
 
     let temp = tempfile::tempdir().unwrap();
-    let selected = game(&temp.path().join("selected"));
-    let _lock = fs::OpenOptions::new().read(true).share_mode(0).open(selected.join("boot.hcb")).unwrap();
+    let root = temp.path().join("games");
+    let unreadable = game(&root.join("a"));
+    let readable = game(&root.join("b"));
+    let _lock = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(unreadable.join("boot.hcb"))
+        .unwrap();
     let mut app = controller(&temp.path().join("manager"));
-    let model = import(&mut app, &selected);
-    assert!(matches!(&app.startup_state, background::StartupState::Failed(error)
-        if error.starts_with("SHINKI_EMU_GAME_DIRECTORY_IO: ")));
-    assert_eq!(model.library.prepare_state, "failed");
-    assert!(model.library.prepare_detail.starts_with("无法读取游戏目录："));
-    assert!(model.library.games.is_empty());
+    let model = import(&mut app, &root);
+    assert_eq!(model.library.prepare_state, "ready");
+    assert_eq!(model.library.games.len(), 1);
+    assert_eq!(model.library.selected_id, path_id(&readable));
+    assert!(app.diagnostic.is_empty());
 }
 
 #[test]
-fn a_failed_queued_import_preserves_games_and_requires_an_explicit_retry() {
+fn a_vanished_queued_import_is_skipped_and_refresh_can_find_it_again() {
     let root = tempfile::tempdir().unwrap();
     let first = game(&root.path().join("first"));
     let pending = game(&root.path().join("pending"));
@@ -293,13 +324,13 @@ fn a_failed_queued_import_preserves_games_and_requires_an_explicit_retry() {
     fs::rename(&pending, &moved).unwrap();
     settle_background(&mut app);
 
-    let failed = app.model().unwrap();
-    assert!(matches!(&app.startup_state, background::StartupState::Failed(error)
-        if error.starts_with("SHINKI_EMU_GAME_DIRECTORY_INVALID")));
-    assert!(failed.library.can_refresh);
-    assert!(!failed.library.prepare_detail.is_empty());
+    let ready = app.model().unwrap();
+    assert_eq!(ready.library.prepare_state, "ready");
+    assert!(ready.library.can_refresh);
+    assert!(ready.library.prepare_detail.is_empty());
+    assert!(app.diagnostic.is_empty());
     assert_eq!(visible_games(&app), ["existing"]);
-    assert_eq!(failed.settings.roots, [pending.to_str().unwrap()]);
+    assert_eq!(ready.settings.roots, [pending.to_str().unwrap()]);
     fs::rename(&moved, &pending).unwrap();
     app.poll_platform().unwrap();
     assert_eq!(visible_games(&app), ["existing"]);

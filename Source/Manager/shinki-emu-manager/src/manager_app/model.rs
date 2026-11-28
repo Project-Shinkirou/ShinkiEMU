@@ -15,7 +15,7 @@ impl ShinkiEmuManagerController {
         let query = self.search_query.trim();
         let patch_query = self.patch_query.trim();
         let shinki_emu_manager_core::LibrarySnapshot {
-            games,
+            mut games,
             play_stats,
             identities,
             metadata: metadata_snapshots,
@@ -23,6 +23,7 @@ impl ShinkiEmuManagerController {
             .library
             .library_snapshot()
             .map_err(|error| error.to_string())?;
+        games.retain(|game| !self.missing_local_games.contains(&game.game_id));
         let mut selected = None;
         let mut metadata = None;
         let mut launch_title = None;

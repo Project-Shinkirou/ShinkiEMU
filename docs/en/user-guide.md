@@ -41,6 +41,8 @@ The prerelease channel is selectable and defaults to enabled when running a prer
 
 Choose the **Add folder** icon in the library header and select the original game folder. Manager scans it in place, even offline and before you install a core. The import dialog shows progress and lets you cancel the scan. Background refreshes show progress above the list. On Android, grant access when the system folder picker asks. If a folder cannot be read, check its permissions or choose another.
 
+Scanning skips folders and entries it cannot read and continues with the rest. A confirmed missing local game folder disappears from the library after a scan. Manager keeps its settings and play history and shows it again when the folder is restored and rescanned. An inaccessible folder or a missing core does not remove a game.
+
 On desktop (Windows, macOS and Linux) the header also has an **Open game disc** icon for game data discs the system has already mounted. With one disc, Manager scans it right away. With several, it lists each volume name and path and scans only the one you pick. With none, it shows a short notice. Games are scanned and started from the disc itself: nothing is copied, and Manager never ejects the tray, mounts images or runs installers. Before a launch it checks that the same disc is still inserted; after swapping discs, choose **Open game disc** again. Discs are read-only, so patches cannot be applied. Games that write into their own folder may not run from a disc, and installer-only discs need installing first as the game describes.
 
 On Android 11 or later, the folder step in first-time setup also offers **Allow access to all files**. This opens Android's system settings and is optional.

@@ -25,6 +25,9 @@ impl ShinkiEmuManagerController {
         if case_id.is_empty() {
             self.selected_case_id = None;
         } else {
+            if self.missing_local_games.contains(case_id) {
+                return Err("SHINKI_EMU_GAME_NOT_FOUND".into());
+            }
             self.game(case_id)?;
             self.selected_case_id = Some(case_id.into());
         }

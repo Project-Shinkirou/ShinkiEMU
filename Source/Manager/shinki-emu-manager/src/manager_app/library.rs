@@ -28,8 +28,9 @@ impl ShinkiEmuManagerController {
             self.register_library_root(path.to_owned(), true)?;
             return self.model();
         }
-        let root = probe_worker::canonical_directory(path)?
-            .ok_or("SHINKI_EMU_GAME_DIRECTORY_INVALID")?;
+        let Ok(Some(root)) = probe_worker::canonical_directory(path) else {
+            return self.model();
+        };
         self.register_library_root(root, true)?;
         self.model()
     }
@@ -167,6 +168,21 @@ impl ShinkiEmuManagerController {
         self.model()
     }
 
+    pub(super) fn apply_missing_local_games(&mut self, missing: BTreeSet<String>) -> Result<(), String> {
+        for id in &missing {
+            self.clear_probe_state(id)?;
+        }
+        if self.selected_case_id.as_ref().is_some_and(|id| missing.contains(id)) {
+            self.selected_case_id = None;
+        }
+        if self.patch_game_id.as_ref().is_some_and(|id| missing.contains(id)) {
+            self.patch_game_id = None;
+            self.patch_state = Default::default();
+        }
+        self.missing_local_games = missing;
+        Ok(())
+    }
+
     pub(super) fn first_visible_game(&self) -> Result<Option<String>, String> {
         let excluded: BTreeSet<String> = self
             .library
@@ -181,7 +197,7 @@ impl ShinkiEmuManagerController {
             .map_err(|error| error.to_string())?
             .into_iter()
             .map(|game| game.game_id)
-            .find(|id| !excluded.contains(id)))
+            .find(|id| !excluded.contains(id) && !self.missing_local_games.contains(id)))
     }
 
     pub(super) fn open(mailbox: FrameMailbox) -> Result<Self, String> {
@@ -282,6 +298,7 @@ impl ShinkiEmuManagerController {
             config_path_error: None,
             probe_choices: BTreeMap::new(),
             manual_games: BTreeSet::new(),
+            missing_local_games: BTreeSet::new(),
             manual_launch: None,
             selected_case_id: None,
             search_query: String::new(),

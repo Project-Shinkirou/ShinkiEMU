@@ -1988,9 +1988,6 @@ msgstr "No related logs"
 msgid "有 {count} 个核心加载失败，请查看核心诊断；修复或更换核心后需重启应用。"
 msgstr "{count} cores failed to load. Check core diagnostics, and restart the app after fixing or replacing them."
 
-msgid "有 {count} 个游戏目录当前不可用。资料库信息已保留，恢复目录后点击“刷新资料库”。"
-msgstr "{count} game folders are unavailable. Their library entries are kept; restore the folders, then click “Refresh library”."
-
 msgid "未加载模拟器核心，请检查核心安装和加载错误后重启应用。"
 msgstr "No cores are loaded. Check the core installation and load errors, then restart the app."
 

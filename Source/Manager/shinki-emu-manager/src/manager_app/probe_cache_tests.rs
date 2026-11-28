@@ -73,8 +73,8 @@ fn malformed_cache_deep_layouts_and_missing_roots_never_drop_library_records() {
     refresh(&mut cache, &path);
     fs::remove_dir_all(&path).unwrap();
     let report = refresh(&mut cache, &path);
-    assert_eq!(report.missing, 1);
-    assert_eq!(report.games[0].game_ids, ["registered"]);
+    assert!(report.missing_local_games.contains("registered"));
+    assert!(report.games.is_empty());
     assert!(cache.entries.is_empty());
 }
 
