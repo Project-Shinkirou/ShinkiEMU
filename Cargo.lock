@@ -11417,7 +11417,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-kirikiroid2-web"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=63ffef99148b5dd46cdcd05d4a6920976e060867#63ffef99148b5dd46cdcd05d4a6920976e060867"
+source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=8e0a42a5a247b18c38f886e677545277139764ed#8e0a42a5a247b18c38f886e677545277139764ed"
 dependencies = [
  "serde_json",
  "shinki-emu-abi",
@@ -11429,7 +11429,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-krkr2"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/krkr2?rev=e0dcb53a280a38ab2fad65ae3c997759d0470914#e0dcb53a280a38ab2fad65ae3c997759d0470914"
+source = "git+https://github.com/Project-Shinkirou/krkr2?rev=c7edf3e4e4211bfefc9aef6a44798952a1f16ca0#c7edf3e4e4211bfefc9aef6a44798952a1f16ca0"
 dependencies = [
  "serde_json",
  "shinki-emu-abi",
@@ -11884,7 +11884,7 @@ dependencies = [
 [[package]]
 name = "shinki-kirikiroid2-web-android-host"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=63ffef99148b5dd46cdcd05d4a6920976e060867#63ffef99148b5dd46cdcd05d4a6920976e060867"
+source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=8e0a42a5a247b18c38f886e677545277139764ed#8e0a42a5a247b18c38f886e677545277139764ed"
 dependencies = [
  "flate2",
  "serde_json",
@@ -11895,7 +11895,7 @@ dependencies = [
 [[package]]
 name = "shinki-krkr2-android-host"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/krkr2?rev=e0dcb53a280a38ab2fad65ae3c997759d0470914#e0dcb53a280a38ab2fad65ae3c997759d0470914"
+source = "git+https://github.com/Project-Shinkirou/krkr2?rev=c7edf3e4e4211bfefc9aef6a44798952a1f16ca0#c7edf3e4e4211bfefc9aef6a44798952a1f16ca0"
 dependencies = [
  "flate2",
  "serde_json",

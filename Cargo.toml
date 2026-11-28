@@ -120,15 +120,15 @@ shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "98
 shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "575075a678a17d4e21ac81c24adbef124ab2027e", default-features = false }
 shinki-emu-art3m1s-core = { git = "https://github.com/Project-Shinkirou/art3m1s-core", rev = "a761f0926ee3c7280d696c8c36763500cd319194", default-features = false }
 shinki-emu-sena-rs = { git = "https://github.com/Project-Shinkirou/sena-rs", rev = "c4c4114ae200139d477b7f3180440b3895dc04d9", default-features = false }
-shinki-emu-kirikiroid2-web = { git = "https://github.com/Project-Shinkirou/kirikiroid2-web", rev = "63ffef99148b5dd46cdcd05d4a6920976e060867", default-features = false }
-shinki-kirikiroid2-web-android-host = { git = "https://github.com/Project-Shinkirou/kirikiroid2-web", rev = "63ffef99148b5dd46cdcd05d4a6920976e060867" }
+shinki-emu-kirikiroid2-web = { git = "https://github.com/Project-Shinkirou/kirikiroid2-web", rev = "8e0a42a5a247b18c38f886e677545277139764ed", default-features = false }
+shinki-kirikiroid2-web-android-host = { git = "https://github.com/Project-Shinkirou/kirikiroid2-web", rev = "8e0a42a5a247b18c38f886e677545277139764ed" }
 shinki-emu-ethornell-rs = { git = "https://github.com/Project-Shinkirou/ethornell-rs", rev = "ee0898860ada086abaca1cac82a05430bb601ab7", default-features = false }
 shinki-emu-ReMinori = { git = "https://github.com/Project-Shinkirou/ReMinori", rev = "f0508bd37c8e74dfb38880d33348c0b133facd11", default-features = false }
 shinki-emu-impacto = { git = "https://github.com/Project-Shinkirou/impacto", rev = "81e4b1f3e6baa1547284e6a75ea9e45c6aa637f7", default-features = false }
 shinki-emu-renpy = { git = "https://github.com/Project-Shinkirou/renpy", rev = "0072512dc0181fa737784f309fbf228b605617dd", default-features = false }
 shinki-emu-cmvs-rs = { git = "https://github.com/Project-Shinkirou/cmvs-rs", rev = "ac721405102574f3298ab5e64c8b20928dcc81d5", default-features = false }
-shinki-emu-krkr2 = { git = "https://github.com/Project-Shinkirou/krkr2", rev = "e0dcb53a280a38ab2fad65ae3c997759d0470914", default-features = false }
-shinki-krkr2-android-host = { git = "https://github.com/Project-Shinkirou/krkr2", rev = "e0dcb53a280a38ab2fad65ae3c997759d0470914" }
+shinki-emu-krkr2 = { git = "https://github.com/Project-Shinkirou/krkr2", rev = "c7edf3e4e4211bfefc9aef6a44798952a1f16ca0", default-features = false }
+shinki-krkr2-android-host = { git = "https://github.com/Project-Shinkirou/krkr2", rev = "c7edf3e4e4211bfefc9aef6a44798952a1f16ca0" }
 
 [patch."https://github.com/Project-Shinkirou/ShinkiEMU"]
 shinki-emu-abi = { path = "Source/FamilyApi/shinki-emu-abi" }
