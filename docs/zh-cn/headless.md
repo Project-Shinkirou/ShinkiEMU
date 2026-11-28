@@ -39,7 +39,7 @@ owner 线程与 Rust 原生工作线程的默认栈预算为 8 MiB；核心调�
 
 `--configuration` 使用 Manager 原有 JSON 数组，例如 `[{"id":"profile_path","value":{"String":"key.toml"}}]`，字段 ID 以核心声明为准。`--startup-timeout-ms` 默认为 30000，从原生 open 返回后开始等待首个完整 CPU 帧。不会关闭渲染、脚本或视频来通过验收；核心自身需要的 GPU 和音频设备仍需可用。
 
-无窗口逻辑/出帧验收可以传 `--audio-device nullaudiodevice`，选择按时钟消费 PCM 的空音频输出。是否支持由核心声明：descriptor 里有枚举配置字段 `headless_audio_device`，选项包含 `nullaudiodevice`；收到这个值时，核心把自己的设备输出换成空输出，PCM 仍按正常时钟消费。运行器在 probe 之前检查这项声明，缺少时以退出码 1 报 `core does not support the requested headless audio device`；`--configuration` 里已有的 `headless_audio_device` 条目会被替换成请求的值。桌面 Siglus 核心声明了这个字段，使用 Kira 已有的 `NullAudioDevice`，解码、混音、有界 PCM 队列、暂停、恢复和关闭都照常运行。`run.json` 记录设备选择。这个结果不证明真实声音输出正常。不传参数时，Manager 和无窗口运行都走核心的真实设备；设备失败不会退回空输出，核心也不得加这种回退。
+无窗口检查逻辑或出帧时，可用 `--audio-device nullaudiodevice` 选择按时钟消费 PCM 的空音频输出。启动器在 probe 前检查核心是否在 `headless_audio_device` 中声明了 `nullaudiodevice`；没有则报 `core does not support the requested headless audio device`，退出码为 1。该参数覆盖 `--configuration` 中的对应字段，并记录在 `run.json`。桌面 Siglus 只在隔离的无窗口子进程里声明该选项，使用 RoukakuEngine 的空音频设备，解码和混音照常运行。这不验证真实声音。Manager 和未传该参数的无窗口运行都使用真实设备；设备故障不会切换到空输出。
 
 ```powershell
 shinki-emu-headless run --core siglus-core.zip --game-dir C:/Games/MyGame --audio-device nullaudiodevice --frames 180 --output artifacts/siglus-null

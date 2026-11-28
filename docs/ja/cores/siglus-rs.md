@@ -7,7 +7,7 @@ description: Siglus のフォーマット、ネイティブ動作、制約。
 
 `plugin_id: siglus_rs` · エンジンファミリー: SiglusEngine
 
-上流：[xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs)。適応 fork：[Project-Shinkirou/siglus_rs の shinki-headless-null-audio ブランチ](https://github.com/Project-Shinkirou/siglus_rs/tree/shinki-headless-null-audio)。
+上流：[xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs)。[ShinkiEMU のアダプターソース](https://github.com/Project-Shinkirou/siglus_rs/tree/575075a678a17d4e21ac81c24adbef124ab2027e) のリビジョンは `Cargo.lock` で固定しています。
 
 ## フォーマット
 
@@ -21,14 +21,16 @@ scene の再起動後も、セッションの画像と動画のリソース言�
 
 Android Manager はゲーム起動時に別パッケージから Siglus コアを読み込みます。ディレクトリの検出ではメタデータだけを参照し、ネイティブライブラリは読み込みません。コアの有効化時に ABI 拡張経由で Android のコンテキストを渡します。Siglus は引き続き CPU フレームを生成します。
 
+Android コアの Oboe 音声には NDK の `libc++_shared.so` が必要です。コアパッケージには対象 ABI のライブラリと NDK のライセンスを含めます。
+
 ## セーブとキー
 
-セーブはオリジナルのエンジンと同じ場所に書かれます。`<ゲーム>/savedata/` に `NNNN.sav` のスロットとサムネイル、`global.sav`、`config.sav`、`read.sav`、Twitter の状態が入り、キャプチャやエクスポートはゲームディレクトリからの相対パスに書かれます。復元したキーは上流と同じく `<ゲーム>/key.toml` に保存されます。`chs` のリソース対はオリジナルの対と `savedata/` を共有します。中国語パッチを当てたオリジナルも同じ動作です。ゲームディレクトリは書き込み可能である必要があります。
+コアは専用の保存先に書き込みます。既定の起点は Windows では `%LOCALAPPDATA%`、macOS では `~/Library/Application Support`、Linux では `$XDG_DATA_HOME` または `~/.local/share`、Android ではアプリ専用のファイルディレクトリです。その下に `siglus_rs/saves/<正規化したゲームパスのハッシュ>/` を追加します。
 
-Android ではコアの配布順序 4 以降で、アプリ専用のファイルディレクトリと従来と同じゲームパスのハッシュから既定の保存先を求めます。既存のセーブは移動しません。明示した保存先は引き続き優先されます。
+`save_root` を指定すると、このパス全体を置き換えます。ゲームやオリジナルのセーブディレクトリとは別の絶対パスを指定してください。いずれの場合も、その下に `siglus-<original|chs>-<リソース対の識別子>/` が付きます。セーブと設定は `savedata/` に入り、キャプチャとエクスポートも同じ領域に書き込みます。original と CHS はセーブを自動で共有しません。
 
-0.1.0-beta.1 と beta.2 はセーブを `%LOCALAPPDATA%\siglus_rs\saves\<ハッシュ>\siglus-<言語>-<ID>\`（macOS は `~/Library/Application Support/siglus_rs/saves/…`、Linux は `$XDG_DATA_HOME` または `~/.local/share/siglus_rs/saves/…`）に置いていました。ゲームを初めて起動したとき、コアはこのフォルダーを一度だけゲームディレクトリへ取り込みます。既存のファイルは上書きせず、古いフォルダーは `….imported` に名前を変えます。廃止された「セーブディレクトリ」オプションを設定していた場合、コアはそのフォルダーを見つけられません。中にある各 `siglus-*` フォルダーの内容（`savedata/` とキャプチャファイル）を、残したいファイルを上書きしないように手動でゲームディレクトリへコピーしてください。
+古いセーブを自動で取り込んだり、名前を変えたりはしません。別の場所にある互換セーブを試す場合は、ゲームを終了し、元のファイルを残したまま同じリソース対の保存先にコピーしてください。既存のファイルを上書きせず、再起動後に読み込めることを確認します。キーはローカルに保管してください。
 
-ローカライズ版の wrapper は組み込みランタイムの一部ではありません。コアは wrapper の機械語パッチを適用せず、不足しているフォントを補うこともしません。パッケージのデコード、リソースの設定、実行時の動作は、それぞれのリリースごとに確認する必要があります。
+ローカライズ版ランチャーの機械語パッチは適用しません。CJK フォントのフォールバックは欠けている文字を補いますが、元のゲームフォントを再現するものではありません。リソースと動作の互換性はリリースごとに確認してください。
 
 ビルドとリリースの状況は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)、個々のリリースでの結果は[互換性レポート](https://project-shinkirou.github.io/ja/shinkiemu/compatibility/)を参照してください。[コア ABI](../core-abi.md)と[ユーザーガイド](../user-guide.md)もあわせて参照してください。

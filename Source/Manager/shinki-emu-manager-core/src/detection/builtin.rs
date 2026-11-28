@@ -13,6 +13,7 @@ pub(super) fn recognize<T: DetectionTree>(
 
     scan.musica(root, &directory.files)?;
     scan.loose_krkr(root, &directory.files)?;
+    scan.ons(root, &directory.files)?;
     scan.softpal_manifest(root, |scan, path| inspect_file(scan, root, path, &siglus))?;
     // An append already covered by lookahead keeps its existing scan position.
     if let Some(path) = siglus.append_directory().filter(|path| !is_lookahead(path)) {

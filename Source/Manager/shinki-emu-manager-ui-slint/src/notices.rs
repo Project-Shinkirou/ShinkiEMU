@@ -434,7 +434,12 @@ impl NoticeModel {
     fn rebuild(&self) {
         let dismissed = self.dismissed.borrow();
         let mut rows = Vec::new();
-        if let Some(item) = self.priority.borrow().as_ref().filter(|item| !dismissed.contains(&item.id)) {
+        if let Some(item) = self
+            .priority
+            .borrow()
+            .as_ref()
+            .filter(|item| !dismissed.contains(&item.id))
+        {
             rows.push(to_notice(item));
         }
         for item in self.host_items.borrow().iter() {

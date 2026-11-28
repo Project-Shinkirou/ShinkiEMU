@@ -39,7 +39,7 @@ owner と Rust ネイティブワーカーの既定スタック予算は 8 MiB �
 
 `--configuration` は既存の Manager `ConfigEntry` 配列です。例: `[{"id":"profile_path","value":{"String":"key.toml"}}]`。フィールド ID はコアの宣言に従います。`--startup-timeout-ms` の既定値は 30000 で、ネイティブ open の完了後から最初の完成 CPU フレームを待ちます。描画、スクリプト、動画を無効化して成功扱いにはしません。コアが必要とする GPU や音声デバイスは引き続き必要です。
 
-ヘッドレスの動作・描画確認では `--audio-device nullaudiodevice` を指定すると、時計どおりに PCM を消費する null 音声出力を選べます。対応はコアが宣言します。descriptor に列挙型の設定フィールド `headless_audio_device` があり、その選択肢に `nullaudiodevice` が含まれていることが条件です。この値を受け取ったコアは、自身のデバイス出力を null 出力に置き換え、PCM は通常の時計で消費し続けます。ランナーは probe の前にこの宣言を確認し、なければ `core does not support the requested headless audio device` で終了コード 1 を返します。`--configuration` にある `headless_audio_device` の項目は要求した値で置き換えます。デスクトップ版 Siglus コアはこのフィールドを宣言し、Kira の既存の `NullAudioDevice` を使います。デコード、ミキサー、有界 PCM キュー、一時停止・再開・終了処理はそのまま動きます。選択は `run.json` に記録されます。実際の音声出力を確認したことにはなりません。オプションを省略すると、Manager とヘッドレス実行はコアの実デバイスを使います。デバイスが失敗しても null 出力には切り替わらず、コアもそのような切り替えを追加してはいけません。
+ヘッドレスで動作や描画を確認する場合は、`--audio-device nullaudiodevice` でクロックに従って PCM を消費する null 出力を選べます。ランナーは probe の前にコアの `headless_audio_device` が `nullaudiodevice` に対応することを確認します。未対応の場合は `core does not support the requested headless audio device` と表示し、終了コード 1 を返します。このオプションは `--configuration` の同じ項目を上書きし、`run.json` に記録されます。デスクトップ版 Siglus は隔離されたヘッドレス子プロセスでのみこの項目を公開し、RoukakuEngine の null デバイスを使います。デコードとミキシングは動作しますが、実際の音声出力は検証できません。Manager とオプションなしのヘッドレス実行は実デバイスを使い、デバイスが故障しても null 出力には切り替わりません。
 
 ```powershell
 shinki-emu-headless run --core siglus-core.zip --game-dir C:/Games/MyGame --audio-device nullaudiodevice --frames 180 --output artifacts/siglus-null

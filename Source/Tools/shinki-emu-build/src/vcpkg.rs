@@ -89,9 +89,7 @@ fn core_ports(
     let source_overlay = source.join("vcpkg/ports");
     let has_source_overlay = source_overlay.is_dir();
     let config = || workspace.join("build/vcpkg");
-    let platform_overlay = if target.ends_with("-linux-android") {
-        Some("mobile-ports")
-    } else if target.ends_with("-apple-ios") || target.ends_with("-apple-ios-sim") {
+    let platform_overlay = if target.ends_with("-apple-ios") || target.ends_with("-apple-ios-sim") {
         Some("ios-ports")
     } else {
         None
@@ -582,10 +580,13 @@ mod tests {
         for (target, overlays, expected) in [
             (
                 "aarch64-linux-android",
-                &[PortOverlay::Vcpkg("ports/libass")][..],
+                &[
+                    PortOverlay::Vcpkg("ports/libass"),
+                    PortOverlay::Workspace("mobile-ports"),
+                ][..],
                 vec![&libass, &mobile, &source_overlay],
             ),
-            ("x86_64-linux-android", &[], vec![&mobile, &source_overlay]),
+            ("x86_64-linux-android", &[], vec![&source_overlay]),
             (
                 "x86_64-apple-darwin",
                 &[PortOverlay::Workspace("apple-ports")][..],

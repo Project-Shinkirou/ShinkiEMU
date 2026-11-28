@@ -21,11 +21,6 @@ The core uses Luau on every platform, with an Artemis compatibility layer for le
 
 ## Save paths
 
-`SAVEPATH` is a logical relative prefix from `system.ini`. The adapter mounts its
-writable root at `<game>`, so `SAVEPATH=savedata` resolves to
-`<game>/savedata/save0001.dat`, `saveg.dat`, and `system.dat`. It does not append
-`savedata` a second time. Absolute or CSIDL-style values are normalized by the
-upstream runtime to their logical prefix; the adapter keeps that prefix relative
-to the game root and rejects traversal/device segments.
+The adapter writes under `<game>/savedata/`. `SAVEPATH` in `system.ini` adds a relative subdirectory. It defaults to `save` if absent or empty after normalization. Slots such as `save0001.dat`, along with `saveg.dat` and `system.dat`, go under `<game>/savedata/save/` by default or `<game>/savedata/savedata/` when `SAVEPATH=savedata`. Absolute or CSIDL-style values are normalized to a logical prefix, not used as absolute destinations. Existing save paths are unchanged.
 
 See the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/) for build/release status and [compatibility reports](https://project-shinkirou.github.io/en/shinkiemu/compatibility/) for specific releases. See also [Core ABI](../core-abi.md) and [User guide](../user-guide.md).

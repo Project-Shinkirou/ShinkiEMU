@@ -499,7 +499,7 @@ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 [[package]]
 name = "art3m1s-core"
 version = "0.4.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=3f80b781994086762eb97b90746afdfb34d54d61#3f80b781994086762eb97b90746afdfb34d54d61"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=a761f0926ee3c7280d696c8c36763500cd319194#a761f0926ee3c7280d696c8c36763500cd319194"
 dependencies = [
  "ab_glyph",
  "art3m1s-emote",
@@ -519,12 +519,12 @@ dependencies = [
 [[package]]
 name = "art3m1s-emote"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=3f80b781994086762eb97b90746afdfb34d54d61#3f80b781994086762eb97b90746afdfb34d54d61"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=a761f0926ee3c7280d696c8c36763500cd319194#a761f0926ee3c7280d696c8c36763500cd319194"
 
 [[package]]
 name = "art3m1s-log"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=3f80b781994086762eb97b90746afdfb34d54d61#3f80b781994086762eb97b90746afdfb34d54d61"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=a761f0926ee3c7280d696c8c36763500cd319194#a761f0926ee3c7280d696c8c36763500cd319194"
 dependencies = [
  "log 0.4.34",
 ]
@@ -532,7 +532,7 @@ dependencies = [
 [[package]]
 name = "art3m1s-media"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=3f80b781994086762eb97b90746afdfb34d54d61#3f80b781994086762eb97b90746afdfb34d54d61"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=a761f0926ee3c7280d696c8c36763500cd319194#a761f0926ee3c7280d696c8c36763500cd319194"
 dependencies = [
  "ffmpeg-next",
  "libc",
@@ -541,7 +541,7 @@ dependencies = [
 [[package]]
 name = "art3m1s-render"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=3f80b781994086762eb97b90746afdfb34d54d61#3f80b781994086762eb97b90746afdfb34d54d61"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=a761f0926ee3c7280d696c8c36763500cd319194#a761f0926ee3c7280d696c8c36763500cd319194"
 dependencies = [
  "ash 0.38.0+1.3.281",
  "glam 0.30.10",
@@ -575,7 +575,7 @@ dependencies = [
 [[package]]
 name = "asb-interpreter"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=3f80b781994086762eb97b90746afdfb34d54d61#3f80b781994086762eb97b90746afdfb34d54d61"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=a761f0926ee3c7280d696c8c36763500cd319194#a761f0926ee3c7280d696c8c36763500cd319194"
 dependencies = [
  "asb-decrypt",
  "encoding_rs",
@@ -2900,7 +2900,7 @@ dependencies = [
 [[package]]
 name = "eden-engine"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=04272470932cf5096fed23b2937ae131e1cd73dc#04272470932cf5096fed23b2937ae131e1cd73dc"
+source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=f0508bd37c8e74dfb38880d33348c0b133facd11#f0508bd37c8e74dfb38880d33348c0b133facd11"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2924,7 +2924,7 @@ dependencies = [
 [[package]]
 name = "eden-formats"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=04272470932cf5096fed23b2937ae131e1cd73dc#04272470932cf5096fed23b2937ae131e1cd73dc"
+source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=f0508bd37c8e74dfb38880d33348c0b133facd11#f0508bd37c8e74dfb38880d33348c0b133facd11"
 dependencies = [
  "anyhow",
  "crc32fast",
@@ -2938,7 +2938,7 @@ dependencies = [
 [[package]]
 name = "eden-vm"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=04272470932cf5096fed23b2937ae131e1cd73dc#04272470932cf5096fed23b2937ae131e1cd73dc"
+source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=f0508bd37c8e74dfb38880d33348c0b133facd11#f0508bd37c8e74dfb38880d33348c0b133facd11"
 dependencies = [
  "anyhow",
  "eden-formats",
@@ -7098,7 +7098,7 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574#22ac45acc6a436516333a85a4ac3b8470e1cc574"
+source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=c4c4114ae200139d477b7f3180440b3895dc04d9#c4c4114ae200139d477b7f3180440b3895dc04d9"
 dependencies = [
  "bytemuck",
  "byteorder",
@@ -8323,7 +8323,7 @@ dependencies = [
 [[package]]
 name = "pal-asset"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574#22ac45acc6a436516333a85a4ac3b8470e1cc574"
+source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=c4c4114ae200139d477b7f3180440b3895dc04d9#c4c4114ae200139d477b7f3180440b3895dc04d9"
 dependencies = [
  "encoding_rs",
  "js-sys",
@@ -8333,12 +8333,12 @@ dependencies = [
 [[package]]
 name = "pal-script"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574#22ac45acc6a436516333a85a4ac3b8470e1cc574"
+source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=c4c4114ae200139d477b7f3180440b3895dc04d9#c4c4114ae200139d477b7f3180440b3895dc04d9"
 
 [[package]]
 name = "pal-vm"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574#22ac45acc6a436516333a85a4ac3b8470e1cc574"
+source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=c4c4114ae200139d477b7f3180440b3895dc04d9#c4c4114ae200139d477b7f3180440b3895dc04d9"
 dependencies = [
  "ab_glyph",
  "android_logger 0.15.1",
@@ -8353,7 +8353,7 @@ dependencies = [
  "kira 0.12.1",
  "libc",
  "log 0.4.34",
- "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574)",
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/sena-rs?rev=c4c4114ae200139d477b7f3180440b3895dc04d9)",
  "ndk-context",
  "pal-asset",
  "pal-script",
@@ -8368,7 +8368,7 @@ dependencies = [
  "wgpu 29.0.4",
  "windows-sys 0.61.2",
  "winit 0.30.13",
- "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574)",
+ "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/sena-rs?rev=c4c4114ae200139d477b7f3180440b3895dc04d9)",
 ]
 
 [[package]]
@@ -8588,7 +8588,7 @@ checksum = "6b1a50d821a2526af6d5756c23c68e453532a986e361a3e12c9cc7fe61d862ac"
 [[package]]
 name = "pf8"
 version = "0.1.6"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=3f80b781994086762eb97b90746afdfb34d54d61#3f80b781994086762eb97b90746afdfb34d54d61"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=a761f0926ee3c7280d696c8c36763500cd319194#a761f0926ee3c7280d696c8c36763500cd319194"
 dependencies = [
  "encoding_rs",
  "sha1 0.11.0",
@@ -8599,7 +8599,7 @@ dependencies = [
 [[package]]
 name = "pfs-upk-rust"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=3f80b781994086762eb97b90746afdfb34d54d61#3f80b781994086762eb97b90746afdfb34d54d61"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=a761f0926ee3c7280d696c8c36763500cd319194#a761f0926ee3c7280d696c8c36763500cd319194"
 dependencies = [
  "encoding_rs",
  "pf8",
@@ -11085,7 +11085,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-ReMinori"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=04272470932cf5096fed23b2937ae131e1cd73dc#04272470932cf5096fed23b2937ae131e1cd73dc"
+source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=f0508bd37c8e74dfb38880d33348c0b133facd11#f0508bd37c8e74dfb38880d33348c0b133facd11"
 dependencies = [
  "anyhow",
  "eden-engine",
@@ -11135,7 +11135,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-art3m1s-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=3f80b781994086762eb97b90746afdfb34d54d61#3f80b781994086762eb97b90746afdfb34d54d61"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=a761f0926ee3c7280d696c8c36763500cd319194#a761f0926ee3c7280d696c8c36763500cd319194"
 dependencies = [
  "art3m1s-core",
  "encoding_rs",
@@ -11408,7 +11408,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-impacto"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/impacto?rev=5c5857f08adc2f83ae08a5317f8198b37a48b339#5c5857f08adc2f83ae08a5317f8198b37a48b339"
+source = "git+https://github.com/Project-Shinkirou/impacto?rev=81e4b1f3e6baa1547284e6a75ea9e45c6aa637f7#81e4b1f3e6baa1547284e6a75ea9e45c6aa637f7"
 dependencies = [
  "shinki-emu-abi",
  "shinki-emu-build",
@@ -11802,7 +11802,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-sena-rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574#22ac45acc6a436516333a85a4ac3b8470e1cc574"
+source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=c4c4114ae200139d477b7f3180440b3895dc04d9#c4c4114ae200139d477b7f3180440b3895dc04d9"
 dependencies = [
  "anyhow",
  "log 0.4.34",
@@ -16533,7 +16533,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574#22ac45acc6a436516333a85a4ac3b8470e1cc574"
+source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=c4c4114ae200139d477b7f3180440b3895dc04d9#c4c4114ae200139d477b7f3180440b3895dc04d9"
 dependencies = [
  "byteorder",
  "log 0.4.34",

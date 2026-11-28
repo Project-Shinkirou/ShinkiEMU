@@ -7,7 +7,7 @@ description: Formats, native behavior and limits of Siglus.
 
 `plugin_id: siglus_rs` · Engine family: SiglusEngine
 
-Upstream: [xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs). Adaptation fork: [Project-Shinkirou/siglus_rs, shinki-headless-null-audio branch](https://github.com/Project-Shinkirou/siglus_rs/tree/shinki-headless-null-audio).
+Upstream: [xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs). `Cargo.lock` pins the exact [ShinkiEMU adaptation](https://github.com/Project-Shinkirou/siglus_rs/tree/575075a678a17d4e21ac81c24adbef124ab2027e).
 
 ## Formats
 
@@ -25,12 +25,12 @@ The standalone Android core uses the NDK's `libc++_shared.so` for Oboe audio. Pa
 
 ## Saves and keys
 
-Saves stay where the original engine writes them: `<game>/savedata/` holds `NNNN.sav` slots and thumbnails, `global.sav`, `config.sav`, `read.sav` and Twitter state; captures and exports are written relative to the game directory. A recovered key goes to `<game>/key.toml`, as upstream does. The `chs` resource pair shares `savedata/` with the original pair, like the patched original. The game directory must be writable.
+The core writes to a managed save directory. The default starts at `%LOCALAPPDATA%` on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or `~/.local/share` on Linux, and the app’s private files directory on Android. The core appends `siglus_rs/saves/<canonical-game-path-hash>/`.
 
-After updating Android Siglus to core release sequence 4, it resolves the default save root from the app’s private files directory using the same canonical game path hash as before. Existing saves stay in place. An explicitly configured save root still takes precedence.
+An explicit `save_root` replaces that whole path. It must be absolute and separate from the game and original save directories. Either way, the core adds `siglus-<original|chs>-<resource-pair-identity>/`. Native slots and settings go in its `savedata/`, with captures and exports relative to the same namespace. Original and CHS resources do not automatically share saves.
 
-0.1.0-beta.1 and beta.2 kept saves under `%LOCALAPPDATA%\siglus_rs\saves\<hash>\siglus-<language>-<id>\` (macOS: `~/Library/Application Support/siglus_rs/saves/…`; Linux: `$XDG_DATA_HOME` or `~/.local/share/siglus_rs/saves/…`). The first launch of a game imports that folder into the game directory once: existing files are kept, and the old folder is renamed to `….imported`. If you had set the retired "save directory" option, the core cannot find that folder anymore. Copy the contents of each `siglus-*` folder inside it (`savedata/` and any capture files) into the game directory yourself, without overwriting files you want to keep.
+The core does not import or rename old saves. To try a compatible save from another layout, close the game, retain the original, and copy it into the managed namespace for the same resource pair without overwriting files. Verify a cold load with the copy. Keep recovered keys local.
 
-A localized edition's wrapper is not part of the embedded runtime: the core does not apply wrapper machine-code patches or invent missing fonts. Package decoding, resource configuration and runtime behavior must be established for the exact edition.
+The core does not apply localized launchers’ machine-code patches. Its CJK fallback can fill missing glyphs but cannot recreate a missing game font. Check resource and runtime compatibility for the exact edition.
 
 See the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/) for build/release status and [compatibility reports](https://project-shinkirou.github.io/en/shinkiemu/compatibility/) for specific releases. See also [Core ABI](../core-abi.md) and [User guide](../user-guide.md).

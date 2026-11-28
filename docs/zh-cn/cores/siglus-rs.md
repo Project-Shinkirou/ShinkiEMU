@@ -7,7 +7,7 @@ description: Siglus 的格式、原生行为与限制。
 
 `plugin_id: siglus_rs` · 引擎家族: SiglusEngine
 
-上游：[xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs)。适配 fork：[Project-Shinkirou/siglus_rs 的 shinki-headless-null-audio 分支](https://github.com/Project-Shinkirou/siglus_rs/tree/shinki-headless-null-audio)。
+上游：[xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs)。`Cargo.lock` 固定了 [ShinkiEMU 适配源码](https://github.com/Project-Shinkirou/siglus_rs/tree/575075a678a17d4e21ac81c24adbef124ab2027e)。
 
 ## 格式
 
@@ -25,12 +25,12 @@ Android 独立核心的 Oboe 音频使用 NDK 的 `libc++_shared.so`，打包时
 
 ## 存档与密钥
 
-存档位置与原版引擎一致：`<游戏>/savedata/` 存放 `NNNN.sav` 存档位及缩略图、`global.sav`、`config.sav`、`read.sav` 和 Twitter 状态；截图和导出文件写在游戏目录下的相对路径。恢复出的密钥按上游写入 `<游戏>/key.toml`。`chs` 资源对与原版资源对共用 `savedata/`，和打过汉化补丁的原版行为相同。游戏目录需要可写。
+核心把存档写入独立目录。Windows 默认从 `%LOCALAPPDATA%` 开始，macOS 用 `~/Library/Application Support`，Linux 用 `$XDG_DATA_HOME` 或 `~/.local/share`，Android 用应用私有文件目录。核心在对应目录后追加 `siglus_rs/saves/<规范化游戏路径的哈希>/`。
 
-Android 从发布序号 4 起由核心自己定位默认存档目录。仍使用应用私有文件目录和原有的游戏路径哈希，已有存档不用迁移；显式配置的存档目录优先。
+显式设置 `save_root` 会替代这整段路径，须为与游戏目录和原版存档目录相互独立的绝对路径。不论是否显式设置，核心都会再追加 `siglus-<original|chs>-<资源对标识>/`。存档和原生设置写进其中的 `savedata/`，截图和导出也相对同一目录写入。原版和 CHS 资源不自动共用存档。
 
-0.1.0-beta.1 和 beta.2 把存档放在 `%LOCALAPPDATA%\siglus_rs\saves\<哈希>\siglus-<语言>-<标识>\`（macOS 为 `~/Library/Application Support/siglus_rs/saves/…`，Linux 为 `$XDG_DATA_HOME` 或 `~/.local/share/siglus_rs/saves/…`）。首次启动该游戏时，核心会把这个目录一次性导入游戏目录：已有文件不会被覆盖，旧目录随后改名为 `….imported`。如果当时设置过已移除的“存档目录”选项，核心已无从找到那个目录，请手动把其中每个 `siglus-*` 文件夹的内容（`savedata/` 及截图文件）复制到游戏目录，注意不要覆盖想保留的文件。
+核心不会导入或重命名旧档。若要尝试其他路径下的兼容存档，请先关闭游戏、保留原档，再把副本复制到同一资源对的存档目录，不覆盖现有文件。用副本验证冷启动能否读回。密钥留在本机。
 
-本地化发行版的 wrapper 不属于嵌入运行时。核心不应用 wrapper 机器码补丁，也不补造缺失字体；包解码、资源配置和运行行为都要按具体发行版确认。
+核心不应用本地化启动器的机器码补丁。CJK 回退字体可以补缺字，但不能还原缺失的游戏字体。资源和运行兼容性须按具体发行版确认。
 
 构建/发布情况见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，具体发行版结果见[兼容性报告](https://project-shinkirou.github.io/zh-cn/shinkiemu/compatibility/)。另见[核心 ABI](../core-abi.md)和[用户指南](../user-guide.md)。

@@ -21,6 +21,6 @@ Artemis は `system.ini`、PFS（PF6/PF8）、ネイティブのシナリオ・t
 
 ## セーブパス
 
-`SAVEPATH` は `system.ini` の論理的な相対プレフィックスです。書き込み可能なルートは `<game>` にマウントされるため、`SAVEPATH=savedata` は `<game>/savedata/save0001.dat`、`saveg.dat`、`system.dat` に一度だけ解決されます。絶対パスや CSIDL 形式の値は上流ランタイムが論理プレフィックスへ正規化し、アダプターはそれをゲームルート内に制限します。
+書き込み先のルートは `<ゲーム>/savedata/` です。`system.ini` の `SAVEPATH` はその下の相対ディレクトリを指定します。項目がない場合、または正規化後に空になる場合は `save` です。スロット、`saveg.dat`、`system.dat` は通常 `<ゲーム>/savedata/save/` に、`SAVEPATH=savedata` のときは `<ゲーム>/savedata/savedata/` に保存されます。絶対パスや CSIDL 形式は論理プレフィックスに正規化され、絶対パスには書き込みません。既存の保存先は変わりません。
 
 ビルドとリリースの状況は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)、個々のリリースでの結果は[互換性レポート](https://project-shinkirou.github.io/ja/shinkiemu/compatibility/)を参照してください。[コア ABI](../core-abi.md)と[ユーザーガイド](../user-guide.md)もあわせて参照してください。

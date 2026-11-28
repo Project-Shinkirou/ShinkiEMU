@@ -7,7 +7,7 @@ description: Formats, native behavior and limits of Sena.
 
 `plugin_id: sena-rs` · Engine family: SoftPAL
 
-Upstream: [xmoezzz/sena-rs](https://github.com/xmoezzz/sena-rs). Adaptation fork: [Project-Shinkirou/sena-rs, shinki branch](https://github.com/Project-Shinkirou/sena-rs/tree/shinki).
+Upstream: [xmoezzz/sena-rs](https://github.com/xmoezzz/sena-rs). Adaptation fork: [Project-Shinkirou/sena-rs, shinki-save-policy branch](https://github.com/Project-Shinkirou/sena-rs/tree/shinki-save-policy); `Cargo.lock` pins its revision.
 
 ## Formats
 
@@ -17,7 +17,7 @@ SoftPAL combines `SCRIPT.SRC` bytecode with `POINT.DAT` branch/call targets, `FI
 
 The fork owns the SoftPAL VM, wait semantics, native rendering/audio and saves. A successful native restore must leave subsequent saving enabled. The adapter exposes `text_language=jp/cn/tc`; native multilingual record selection preserves the original single-field Japanese behavior. Fonts come from native game paths or explicit native configuration, and render extent is requested through ABI v3.
 
-The adapter's game scope remains the native and Steam Koikake paths. It does not establish support for every SoftPAL title. Unknown external calls and indirect-memory paths must be assessed against the actual runtime; table recognition alone is insufficient.
+At launch, the core checks for an actual native bootstrap and a valid `Sv20` entry point without relying on the game or executable name. That check does not establish compatibility for every SoftPAL title. Unknown external calls and indirect-memory paths must be assessed in the actual runtime.
 
 ## Save paths
 

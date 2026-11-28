@@ -7,7 +7,7 @@ description: Sena 的格式、原生行为与限制。
 
 `plugin_id: sena-rs` · 引擎家族: SoftPAL
 
-上游：[xmoezzz/sena-rs](https://github.com/xmoezzz/sena-rs)。适配 fork：[Project-Shinkirou/sena-rs 的 shinki 分支](https://github.com/Project-Shinkirou/sena-rs/tree/shinki)。
+上游：[xmoezzz/sena-rs](https://github.com/xmoezzz/sena-rs)。适配 fork 为 [Project-Shinkirou/sena-rs 的 shinki-save-policy 分支](https://github.com/Project-Shinkirou/sena-rs/tree/shinki-save-policy)，提交由 `Cargo.lock` 固定。
 
 ## 格式
 
@@ -17,7 +17,7 @@ SoftPAL 将 `SCRIPT.SRC` 字节码与 `POINT.DAT` 分支/调用目标、`FILE.DA
 
 fork 拥有 SoftPAL VM、等待语义、原生渲染/音频和存档。原生读档成功后应继续允许保存。适配层提供 `text_language=jp/cn/tc`，多语言字段选择保留原日文单字段行为。字体来自原生游戏路径或显式原生配置，渲染尺寸通过 ABI v3 请求。
 
-适配范围仍是原生及 Steam Koikake 路径，不能推广到所有 SoftPAL 作品。未知 extcall 和间接内存路径需要按实际运行时确认，识别出数据表还不够。
+启动时，核心验证游戏是否含原生启动资源和有效的 `Sv20` 入口，不按作品名或 EXE 名判断。探测通过不代表所有 SoftPAL 作品均可运行；未知 extcall 和间接内存路径仍须在实际运行中核对。
 
 ## 存档路径
 

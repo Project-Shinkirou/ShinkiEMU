@@ -292,6 +292,25 @@ fn recognized_missing_core_survives_reopen_and_install_without_duplicate_games()
 }
 
 #[test]
+fn ons_detection_shows_missing_core_without_claiming_a_launch_target() {
+    let root = tempfile::tempdir().unwrap();
+    let game = root.path().join("game");
+    fs::create_dir(&game).unwrap();
+    fs::write(game.join("0.txt"), b"*define\ngame\n*start\nend\n").unwrap();
+    let mut app = open(&root.path().join("manager"));
+    let id = import(&mut app, &game);
+    assert_eq!(app.game(&id).unwrap().family_id.as_deref(), Some("onscripter"));
+    assert!(!app.manual_games.contains(&id));
+    let selection = app.model().unwrap().selection.game;
+    assert!(!selection.launchable);
+    assert!(selection.emulator_id.is_empty());
+    assert_eq!(
+        selection.problem,
+        shinki_emu_manager_ui_slint::tr!("已识别引擎，缺少兼容核心")
+    );
+}
+
+#[test]
 fn multiple_plugins_and_families_need_choice_and_never_replace_saved_binding() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("game");

@@ -1,12 +1,12 @@
 //! Durable Manager data for games, play records, metadata, and settings.
 //!
 //! This database is independent from a running emulator. Schemas 4 to 6
-//! upgrade in place; older unsupported schemas rebuild only Manager tables.
+//! upgrade in place; incompatible databases are left untouched.
 //! Native game save files are never touched by this code.
 
 use std::{path::Path, time::Duration};
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, config::DbConfig, params};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use shinki_emu_translation::TranslationProfile;
@@ -162,6 +162,8 @@ pub enum LibraryError {
     Sqlite(#[from] rusqlite::Error),
     #[error("SHINKI_EMU_LIBRARY_SCHEMA_CORRUPT")]
     SchemaCorrupt,
+    #[error("SHINKI_EMU_LIBRARY_SCHEMA_INCOMPATIBLE")]
+    SchemaIncompatible,
     #[error("SHINKI_EMU_LIBRARY_INVALID_ID")]
     InvalidId,
     #[error("SHINKI_EMU_LIBRARY_INVALID_TITLE")]
@@ -188,6 +190,13 @@ pub struct Library {
 
 impl Library {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, LibraryError> {
+        let path = path.as_ref();
+        if path.exists() {
+            // A rejected database must not have its pending WAL checkpointed.
+            let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+            connection.set_db_config(DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, true)?;
+            Self { connection }.compatible_schema_version()?;
+        }
         let connection = Connection::open(path)?;
         Self::from_connection(connection)
     }
@@ -204,24 +213,48 @@ impl Library {
         Ok(library)
     }
 
-    fn ensure_schema(&mut self) -> Result<(), LibraryError> {
+    fn compatible_schema_version(&self) -> Result<i64, LibraryError> {
+        let application_id: i64 =
+            self.connection
+                .pragma_query_value(None, "application_id", |row| row.get(0))?;
+        if application_id != 0 {
+            return Err(LibraryError::SchemaIncompatible);
+        }
         let version: i64 = self
             .connection
             .pragma_query_value(None, "user_version", |row| row.get(0))?;
-        let table_count = self.user_table_count()?;
-        if version == SCHEMA_VERSION {
-            if table_count != REQUIRED_TABLES.len() || !self.tables_present(&REQUIRED_TABLES)? {
-                return Err(LibraryError::SchemaCorrupt);
+        let required = match version {
+            SCHEMA_VERSION | 6 => &REQUIRED_TABLES[..],
+            4 | 5 => &migration::SCHEMA_5_TABLES[..],
+            0 => {
+                let empty: bool = self.connection.query_row(
+                    "SELECT NOT EXISTS(SELECT 1 FROM sqlite_schema)",
+                    [],
+                    |row| row.get(0),
+                )?;
+                let pages: i64 = self
+                    .connection
+                    .pragma_query_value(None, "page_count", |row| row.get(0))?;
+                if empty && pages <= 1 {
+                    return Ok(0);
+                }
+                return Err(LibraryError::SchemaIncompatible);
             }
+            _ => return Err(LibraryError::SchemaIncompatible),
+        };
+        if self.user_table_count()? != required.len() || !self.tables_present(required)? {
+            return Err(LibraryError::SchemaCorrupt);
+        }
+        Ok(version)
+    }
+
+    fn ensure_schema(&mut self) -> Result<(), LibraryError> {
+        let version = self.compatible_schema_version()?;
+        if version == SCHEMA_VERSION {
             return Ok(());
         }
+        let transaction = self.connection.transaction()?;
         if version == 4 || version == 5 {
-            if table_count != migration::SCHEMA_5_TABLES.len()
-                || !self.tables_present(&migration::SCHEMA_5_TABLES)?
-            {
-                return Err(LibraryError::SchemaCorrupt);
-            }
-            let transaction = self.connection.transaction()?;
             if version == 4 {
                 transaction.execute(
                     "UPDATE library_game SET family_id='softpal' WHERE family_id='sena'",
@@ -230,32 +263,14 @@ impl Library {
             }
             migration::upgrade_schema_5(&transaction)?;
             migration::rebuild_external_identity(&transaction)?;
-            transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
-            transaction.commit()?;
-            return Ok(());
-        }
-        if version == 6 {
-            if table_count != REQUIRED_TABLES.len() || !self.tables_present(&REQUIRED_TABLES)? {
-                return Err(LibraryError::SchemaCorrupt);
-            }
-            let transaction = self.connection.transaction()?;
+        } else if version == 6 {
             migration::upgrade_schema_6(&transaction)?;
-            transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
-            transaction.commit()?;
-            return Ok(());
+        } else {
+            transaction.execute_batch(SCHEMA_SQL)?;
+            transaction.execute_batch(STATE_SCHEMA_SQL)?;
         }
-
-        if version != 0 || table_count != 0 {
-            self.rebuild_manager_tables()?;
-            tracing::warn!(
-                event = "shinki.emu.library.rebuilt",
-                previous_schema_version = version,
-            );
-        }
-        self.connection.execute_batch(SCHEMA_SQL)?;
-        self.connection.execute_batch(STATE_SCHEMA_SQL)?;
-        self.connection
-            .pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -280,34 +295,6 @@ impl Library {
             }
         }
         Ok(true)
-    }
-
-    fn rebuild_manager_tables(&mut self) -> Result<(), LibraryError> {
-        self.connection.execute_batch("PRAGMA foreign_keys=OFF;")?;
-        let tables = {
-            let mut statement = self.connection.prepare(
-                "SELECT name FROM sqlite_master
-                 WHERE type='table'
-                   AND name NOT LIKE 'sqlite_%'",
-            )?;
-
-            statement
-                .query_map([], |row| row.get::<_, String>(0))?
-                .collect::<Result<Vec<_>, _>>()?
-        };
-        for table in tables {
-            let escaped = table.replace('"', "\"\"");
-            self.connection
-                .execute_batch(&format!("DROP TABLE IF EXISTS \"{escaped}\";"))?;
-        }
-        self.connection.execute_batch(
-            "DROP INDEX IF EXISTS library_game_title;
-             DROP INDEX IF EXISTS play_session_game_start;
-             DROP INDEX IF EXISTS one_active_play_session;
-             PRAGMA user_version=0;
-             PRAGMA foreign_keys=ON;",
-        )?;
-        Ok(())
     }
 
     pub fn add_game(&mut self, game: &GameRecord) -> Result<(), LibraryError> {
@@ -561,14 +548,61 @@ mod tests {
     }
 
     #[test]
-    fn old_schema_is_rebuilt_without_migration() {
-        let connection = Connection::open_in_memory().unwrap();
+    fn incompatible_database_is_rejected_without_rewriting_it() {
+        let root = tempfile::tempdir().unwrap();
+        for (name, sql) in [
+            (
+                "newer",
+                "CREATE TABLE library_game(title TEXT);
+                 INSERT INTO library_game VALUES ('kept');
+                 PRAGMA user_version=11;",
+            ),
+            ("foreign-view", "CREATE VIEW owner_view AS SELECT 'kept';"),
+            ("foreign-id", "PRAGMA application_id=12345;"),
+            (
+                "foreign-freelist",
+                "CREATE TABLE old_data(title TEXT); DROP TABLE old_data;",
+            ),
+        ] {
+            let path = root.path().join(name);
+            let connection = Connection::open(&path).unwrap();
+            connection.execute_batch(sql).unwrap();
+            drop(connection);
+            let before = std::fs::read(&path).unwrap();
+            assert!(matches!(
+                Library::open(&path),
+                Err(LibraryError::SchemaIncompatible)
+            ));
+            assert_eq!(std::fs::read(&path).unwrap(), before);
+        }
+    }
+
+    #[test]
+    fn incompatible_database_open_does_not_checkpoint_its_wal() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("library.sqlite3");
+        let wal = root.path().join("library.sqlite3-wal");
+        let connection = Connection::open(&path).unwrap();
         connection
-            .execute_batch("CREATE TABLE source_grant(source_id TEXT); PRAGMA user_version=11;")
+            .set_db_config(DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, true)
             .unwrap();
-        let library = Library::from_connection(connection).unwrap();
-        assert_eq!(library.user_table_count().unwrap(), REQUIRED_TABLES.len());
-        assert!(library.list_games().unwrap().is_empty());
+        connection
+            .execute_batch(
+                "PRAGMA journal_mode=WAL;
+                 CREATE TABLE newer_schema(title TEXT);
+                 INSERT INTO newer_schema VALUES ('kept in WAL');
+                 PRAGMA user_version=11;",
+            )
+            .unwrap();
+        drop(connection);
+        let before_database = std::fs::read(&path).unwrap();
+        let before_wal = std::fs::read(&wal).unwrap();
+        assert!(matches!(
+            Library::open(&path),
+            Err(LibraryError::SchemaIncompatible)
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), before_database);
+        assert_eq!(std::fs::read(&wal).unwrap(), before_wal);
     }
 
     #[test]

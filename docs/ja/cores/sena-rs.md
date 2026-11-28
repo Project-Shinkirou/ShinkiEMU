@@ -7,7 +7,7 @@ description: Sena のフォーマット、ネイティブ動作、制約。
 
 `plugin_id: sena-rs` · エンジンファミリー: SoftPAL
 
-上流：[xmoezzz/sena-rs](https://github.com/xmoezzz/sena-rs)。適応 fork：[Project-Shinkirou/sena-rs の shinki ブランチ](https://github.com/Project-Shinkirou/sena-rs/tree/shinki)。
+上流：[xmoezzz/sena-rs](https://github.com/xmoezzz/sena-rs)。アダプターは [Project-Shinkirou/sena-rs の shinki-save-policy ブランチ](https://github.com/Project-Shinkirou/sena-rs/tree/shinki-save-policy)にあり、リビジョンは `Cargo.lock` で固定しています。
 
 ## フォーマット
 
@@ -17,7 +17,7 @@ SoftPAL は、`SCRIPT.SRC` のバイトコードを、`POINT.DAT` の分岐・�
 
 SoftPAL の VM、待機の意味論、ネイティブの描画・音声、セーブは fork が担当します。ネイティブのロードに成功したあとも、続けてセーブできる状態でなければなりません。アダプターは `text_language=jp/cn/tc` を提供し、多言語フィールドの選択では元の日本語の単一フィールドの動作を保ちます。フォントはネイティブのゲームパスまたは明示的なネイティブ設定から取得し、描画サイズは ABI v3 を通じて要求します。
 
-アダプターの対象範囲は引き続きネイティブ版と Steam 版の Koikake のパスで、すべての SoftPAL 作品に当てはまるわけではありません。未知の extcall や間接メモリのパスは実際のランタイムで確認する必要があり、データテーブルを認識できるだけでは不十分です。
+起動時は作品名や実行ファイル名ではなく、実際の起動リソースと有効な `Sv20` エントリーポイントを確認します。これだけですべての SoftPAL 作品の互換性が確認できるわけではありません。未知の extcall や間接メモリアクセスは実行時の動作を確認する必要があります。
 
 ## セーブパス
 

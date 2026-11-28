@@ -75,7 +75,7 @@ supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarc
 android_dynamic = { minimum_release = 2, requires_context = true }
 [cores.attribution]
 adapter_branch = "shinki-android-isolation"
-release_sequence = 2
+release_sequence = 8
 upstream_identity = { repo = "https://github.com/Alphaly2K/art3m1s-core", ref_kind = "branch", ref_name = "master", commit = "ad90a62cb192b119b7cf8589aa7f87a94bd747c8" }
 [[cores.blocked]]
 target = "aarch64-apple-ios"

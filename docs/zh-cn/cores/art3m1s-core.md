@@ -21,10 +21,6 @@ Artemis 读取 `system.ini`、PFS（PF6/PF8）及原生剧情/tag/Lua 资源。�
 
 ## 存档路径
 
-`SAVEPATH` 是 `system.ini` 中的逻辑相对前缀。适配层把可写根挂在
-`<game>`，因此 `SAVEPATH=savedata` 会解析为
-`<game>/savedata/save0001.dat`、`saveg.dat` 和 `system.dat`，不会重复追加
-`savedata`。绝对路径或 CSIDL 风格值由上游运行时归一化为逻辑前缀；适配层将
-该前缀限制在游戏根下，并拒绝遍历段和设备路径。
+适配层的可写根目录为 `<游戏>/savedata/`。`system.ini` 中的 `SAVEPATH` 指定其下的相对目录，缺失或归一化后为空时用 `save`。`save0001.dat` 等槽位、`saveg.dat` 和 `system.dat` 默认位于 `<游戏>/savedata/save/`；设为 `SAVEPATH=savedata` 时位于 `<游戏>/savedata/savedata/`。绝对路径或 CSIDL 风格的值会归一化成逻辑前缀，不会直接用作系统路径。已有存档路径不变。
 
 构建/发布情况见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，具体发行版结果见[兼容性报告](https://project-shinkirou.github.io/zh-cn/shinkiemu/compatibility/)。另见[核心 ABI](../core-abi.md)和[用户指南](../user-guide.md)。

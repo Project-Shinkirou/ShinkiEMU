@@ -26,6 +26,7 @@ mod krkr;
 mod musica;
 #[cfg(test)]
 mod musica_tests;
+mod ons;
 mod renpy;
 mod roots;
 mod siglus;
@@ -35,7 +36,7 @@ mod tests;
 
 // Change when the recognition/traversal rules change, independently of core pins.
 // Future cache consumers must also invalidate on directory-content changes.
-pub const CACHE_VERSION: u32 = 4;
+pub const CACHE_VERSION: u32 = 5;
 const MAX_ENTRIES: u32 = 4096;
 const MAX_FILES: u32 = 1024;
 const MAX_READ_BYTES: u64 = 16 * 1024 * 1024;

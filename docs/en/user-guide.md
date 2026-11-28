@@ -55,6 +55,10 @@ Install a compatible core if a game cannot start because its core is missing. Re
 
 The library and core list use the static catalog and validated package manifests. Native capabilities and settings remain unverified until you explicitly prepare advanced configuration, diagnose one core, or start the selected game. These actions run on the owner thread and touch only the selected implementation. Recognition is not a runtime guarantee; encrypted resources can still need a private profile. Keep keys local.
 
+Manager can recognize ONScripter/NScripter game directories, but this release does not provide a compatible core to install or launch them.
+
+If Manager cannot open a game library database from an incompatible version, use a version that supports it. Manager leaves the original database untouched.
+
 Settings removed by a core update are removed from saved configuration automatically.
 
 ### Installing and updating cores

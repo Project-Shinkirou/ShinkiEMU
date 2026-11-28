@@ -21,11 +21,9 @@ Impacto 在会话线程上用 SDL 离屏事件队列和 EGL pbuffer。Android Ac
 
 ## 存储
 
-Android 继续使用已有的 `save_root`，它必须是游戏资源和核心 `Resources/` 以外的独立可写目录。`userconfig.toml` 仍在该目录中，切换到独立核心包不会移动它。
+将 `save_root` 设为游戏数据和核心 `Resources/` 以外的独立可写目录。桌面和 Android 都使用 `<save_root>/userconfig.toml`。已使用独立目录的用户继续指向原路径，核心不会自动迁移配置。
 
-`userconfig.toml` 保留在 Impacto 的平台偏好目录。Windows 路径为 `%APPDATA%/Committee of Zero/Impacto`。当前 CC profile 将 `SaveDataType` 设为 `None`，没有 profile 存档格式或存档文件；后续支持原生存档的 profile 继续使用上游定义的位置。
-
-旧 `save_root` 由用户指定。迁移 beta.1/beta.2 配置时，请关闭游戏，只在目标文件不存在时，将 `<旧 save_root>/userconfig.toml` 复制到平台偏好目录。Manager 会显示一次退役路径。核心不猜测旧路径，也不在上游目录不可写时另找目录。打包资源中的基础路径使用 `<resources>/saves`，对应上游示例的 `RootSavesDir = "./saves"`；当前 CC profile 不会在此写入存档。
+当前《混沌之子》配置的 `SaveDataType` 为 `None`，没有原生槽位存档。能写配置或重新打开游戏，不能证明原生存读档通过。在 Linux 上还需将 `resources_root` 指向安装后的核心 `Resources/` 目录。
 
 ## 原生行为与限制
 

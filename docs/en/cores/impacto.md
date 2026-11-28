@@ -21,28 +21,9 @@ The core uses its own SDL offscreen event queue and an EGL pbuffer on the sessio
 
 ## Storage
 
-On Android, keep the existing `save_root` set to an isolated writable directory outside the game assets and core's `Resources/`. Impacto uses that directory for `userconfig.toml`; the switch from an embedded library to a separate ZIP does not move it.
+Set `save_root` to a separate writable directory outside the game data and the core’s `Resources/`. The core uses `<save_root>/userconfig.toml` on desktop and Android. If you already used an isolated root, keep pointing at that directory. The core does not move old configuration automatically.
 
-`userconfig.toml` stays in Impacto's platform preference directory, which is
-`%APPDATA%/Committee of Zero/Impacto` on Windows. The selected CC profile sets
-`SaveDataType.None`, so it has no profile save format or save files. Any future
-profile with native save support keeps the upstream profile-defined location.
-
-The retired `save_root` was user-selected. To retain a beta.1/beta.2 configuration,
-close the game and copy `<old-save-root>/userconfig.toml` to the platform preference
-directory only if the destination file does not already exist. The Manager shows
-the retired path once. There is no automatic guessed-path migration or fallback
-when the upstream directory is unwritable. The adapter's packaged base paths use
-`<resources>/saves`, matching the upstream sample's `RootSavesDir = "./saves"`;
-this has no save-file effect for the supported CC profile.
-
-Storage comparison base: upstream `3706ddd89d4ad4aed0e32e127355c4251f22e574`.
-The native `userconfig.cpp`, `io/filemeta.cpp`, `profile/basepaths.cpp` and CC
-save profile are unchanged. The adapter clears its previous session's
-`UserConfigPath` and calls native `UserConfig::Configure()` after installing its
-packaged CC definition. Only its CPU-frame backing size/window mode and
-unsupported patch selection are overridden in memory; save/config paths and
-native error handling are not redirected.
+The current Chaos;Child profile sets `SaveDataType.None` and has no native slot save files. A configuration write or relaunch does not verify native save/load. On Linux, also set `resources_root` to the installed core’s `Resources/` directory.
 
 ## Native behavior and limits
 

@@ -1,7 +1,8 @@
 use std::{path::PathBuf, rc::Rc};
 
 use shinki_emu_manager_ui_slint::{
-    ManagerViewModel, NoticeViewModel, Notices, SlintManagerAdapter, describe_error, i18n, report_error,
+    ManagerViewModel, NoticeViewModel, Notices, SlintManagerAdapter, describe_error, i18n,
+    report_error,
 };
 use slint::{
     ComponentHandle,
@@ -32,7 +33,10 @@ fn render(window: &MinimalSoftwareWindow, width: u32, height: u32) -> Vec<u8> {
             renderer.render(&mut pixels, width as usize);
         }));
     }
-    pixels.iter().flat_map(|pixel| [pixel.r, pixel.g, pixel.b]).collect()
+    pixels
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b])
+        .collect()
 }
 
 #[test]
@@ -52,12 +56,24 @@ fn inventory_detail_renders_with_three_host_notices_and_clears_after_repair() {
     if let Some(dir) = &output {
         std::fs::create_dir_all(dir).unwrap();
     }
-    let languages: &[&str] = if output.is_some() { &["zh-CN", "en", "ja"] } else { &["en"] };
-    let sizes: &[(u32, u32)] = if output.is_some() { &[(1280, 800), (360, 780)] } else { &[(360, 780)] };
+    let languages: &[&str] = if output.is_some() {
+        &["zh-CN", "en", "ja"]
+    } else {
+        &["en"]
+    };
+    let sizes: &[(u32, u32)] = if output.is_some() {
+        &[(1280, 800), (360, 780)]
+    } else {
+        &[(360, 780)]
+    };
     for &language in languages {
         model.app.appearance.language = language.into();
         i18n::apply(language);
-        for raw in ["SHINKI_EMU_LOG_READ", "SHINKI_EMU_METADATA_NETWORK", "SHINKI_EMU_OPTICAL_NO_MEDIA"] {
+        for raw in [
+            "SHINKI_EMU_LOG_READ",
+            "SHINKI_EMU_METADATA_NETWORK",
+            "SHINKI_EMU_OPTICAL_NO_MEDIA",
+        ] {
             report_error(window, raw);
         }
         let text = describe_error(CODE);
@@ -79,19 +95,35 @@ fn inventory_detail_renders_with_three_host_notices_and_clears_after_repair() {
             model.notices.priority.as_mut().unwrap().detail =
                 format!("{}\ncores/pending: PermissionDenied", text.detail);
             adapter.apply(&model);
-            assert!(visible != render(&software, width, height), "changing the raw cause must change the rendered card");
+            assert!(
+                visible != render(&software, width, height),
+                "changing the raw cause must change the rendered card"
+            );
             if let Some(dir) = &output {
                 for (state, pixels) in [("blocked", &visible), ("repaired", &repaired)] {
-                    image::save_buffer(dir.join(format!("inventory-{state}-{language}-{width}x{height}.png")), pixels, width, height, image::ColorType::Rgb8).unwrap();
+                    image::save_buffer(
+                        dir.join(format!("inventory-{state}-{language}-{width}x{height}.png")),
+                        pixels,
+                        width,
+                        height,
+                        image::ColorType::Rgb8,
+                    )
+                    .unwrap();
                 }
             }
 
             window.global::<Notices>().invoke_dismiss(ID.into());
             adapter.apply(&model);
-            assert!(repaired == render(&software, width, height), "dismissed active notice reappeared on refresh");
+            assert!(
+                repaired == render(&software, width, height),
+                "dismissed active notice reappeared on refresh"
+            );
             model.notices.priority = None;
             adapter.apply(&model);
-            assert!(repaired == render(&software, width, height), "repair left a stale notice");
+            assert!(
+                repaired == render(&software, width, height),
+                "repair left a stale notice"
+            );
         }
     }
     window.hide().unwrap();

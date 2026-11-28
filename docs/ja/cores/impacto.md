@@ -21,11 +21,9 @@ Manager の公式カタログから Impacto を取得するか、端末に合う
 
 ## ストレージ
 
-Android は既存の `save_root` を引き続き使います。ゲームデータとコアの `Resources/` から離れた書き込み可能なディレクトリを指定してください。単独パッケージへ移行しても、そこにある `userconfig.toml` は移動しません。
+`save_root` には、ゲームデータやコアの `Resources/` とは別の書き込み可能なディレクトリを指定してください。デスクトップと Android のどちらでも `<save_root>/userconfig.toml` を使います。すでに専用の保存先を使っている場合は、同じ場所を指定してください。設定は自動で移行されません。
 
-`userconfig.toml` は Impacto のプラットフォーム設定ディレクトリに置かれます。Windows では `%APPDATA%/Committee of Zero/Impacto` です。現在の CC profile は `SaveDataType.None` を指定しているため、profile のセーブ形式やセーブファイルはありません。ネイティブセーブに対応する profile は、上流が定義する場所をそのまま使います。
-
-旧 `save_root` はユーザー指定でした。Beta.1/beta.2 の設定を移すにはゲームを閉じ、移動先にファイルがない場合のみ `<旧 save_root>/userconfig.toml` をプラットフォーム設定ディレクトリにコピーしてください。Manager は廃止されたパスを一度表示します。旧パスを推測する自動移行や、上流の場所に書き込めない場合の代替先は追加しません。パッケージの基準パスは上流サンプルの `RootSavesDir = "./saves"` に合わせた `<resources>/saves` です。現在の CC profile はここにセーブを書きません。
+現在の『CHAOS;CHILD』プロファイルは `SaveDataType.None` のため、ネイティブのスロットセーブはありません。設定の書き込みや再起動は、セーブ・ロードの確認にはなりません。Linux では `resources_root` にインストールしたコアの `Resources/` も指定してください。
 
 ## ネイティブ動作と制約
 

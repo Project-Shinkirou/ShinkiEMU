@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_manager_core::LibraryError;
 use shinki_emu_manager_ui_slint::tr;
 
 #[cfg(target_os = "android")]
@@ -194,7 +195,12 @@ impl ShinkiEmuManagerController {
     ) -> Result<Self, String> {
         fs::create_dir_all(&data_dir).map_err(|_| "SHINKI_EMU_DATA_DIRECTORY_CREATE")?;
         let mut library =
-            Library::open(data_dir.join("library.sqlite3")).map_err(|error| error.to_string())?;
+            Library::open(data_dir.join("library.sqlite3")).map_err(|error| match error {
+                LibraryError::SchemaIncompatible => {
+                    tr!("此版本无法打开游戏库数据库。原文件已保留，请使用兼容版本。").into()
+                }
+                other => other.to_string(),
+            })?;
         library
             .settle_abandoned_sessions(unix_time_ms()?)
             .map_err(|error| error.to_string())?;
