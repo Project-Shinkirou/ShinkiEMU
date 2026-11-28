@@ -109,7 +109,7 @@ FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核
 
 ## ShinkiEMU C ABI v3
 
-外部核心使用 [`Project-Shinkirou/ShinkiEMU`](https://github.com/Project-Shinkirou/ShinkiEMU) 的 `shinki-emu-abi`（C ABI v3，源码位于 `Source/FamilyApi/shinki-emu-abi`）。产品工作区通过 `[patch]` 将 Rust 适配层的 ABI 依赖统一到这份源码。独立核心通过 `Source/Cores/` 入口构建，fork 的确切提交见 `Cargo.lock` 和包内 `licenses/pinned-sources.txt`。Android Manager 静态链接 Impacto；KiriKiri 的 Java 宿主随 APK 分发，原生核心另行安装。
+外部核心使用 [`Project-Shinkirou/ShinkiEMU`](https://github.com/Project-Shinkirou/ShinkiEMU) 的 `shinki-emu-abi`（C ABI v3，源码位于 `Source/FamilyApi/shinki-emu-abi`）。产品工作区通过 `[patch]` 将 Rust 适配层的 ABI 依赖统一到这份源码。独立核心通过 `Source/Cores/` 入口构建，fork 的确切提交见 `Cargo.lock` 和包内 `licenses/pinned-sources.txt`。Android 上 Impacto 由独立核心 ZIP 分发，不链接进 Manager APK；两套 KiriKiri 核心的 Java 宿主随 APK 分发，原生核心另行安装。
 
 外部核心适配代码保留在各 fork，主仓不保留第二份适配源码。所有 fork 只保留 `shinki` 分支（同时是默认分支），Apple 扩展提交也在该分支上，精确来源见构建清单。plugin ID 等于上游仓库名，适配包命名为 `shinki-emu-<上游仓库名>`。
 
@@ -151,8 +151,8 @@ FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核
 - Upstream: <https://github.com/xmoezzz/rfvp>
 - Upstream version: `0.7.0`, revision `99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1`
 - Native adaptation fork: <https://github.com/Project-Shinkirou/rfvp>
-- Native adaptation branch: `shinki-android-isolation`
-- 固定来源：[`9a5c20026e3638ef5714c2ad7062634648c8dfcf`](https://github.com/Project-Shinkirou/rfvp/commit/9a5c20026e3638ef5714c2ad7062634648c8dfcf)，适配包为 `crates/shinki-emu-rfvp`，保留原生生命周期、字幕和 C ABI v3 接入。与 Manager、Siglus 统一使用 wgpu 30；静态注册不导出重复查询或 WMV C ABI 符号。字幕来源与宿主统一固定 RoukakuEngine `8392cf161800f7684af7704eb95f7a5526d2015d`。
+- Native adapter: `crates/shinki-emu-rfvp`; the exact adapter commit is in `Cargo.lock` and the package's `licenses/pinned-sources.txt`.
+- 适配保留原生生命周期、字幕和 C ABI v3 接入。与 Manager、Siglus 统一使用 wgpu 30；静态注册不导出重复查询或 WMV C ABI 符号。字幕依赖以同一份 `Cargo.lock` 为准。
 - License: Mozilla Public License 2.0.
 - Derivative source: <https://github.com/Project-Shinkirou/rfvp>
 - Shinki adapter source: fork 内 `crates/shinki-emu-rfvp/`
