@@ -160,7 +160,7 @@ FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核
 
 发布时提供与二进制对应的 MPL-2.0 covered source、修改说明和完整许可证，可随包分发源码或提供有效的 source offer。
 
-完整 fork 由 `build/cores.toml` 固定，在 `ThirdParty/rfvp/` 准备构建源码。文件级变化与覆盖范围见 fork 的 `crates/shinki-emu-rfvp/MODIFICATIONS.md` 与 `THIRD_PARTY_NOTICES.md`，二者随核心目录发布。当前原生字体构造嵌入上游四个 MS 命名字体文件，由上游 [`xmoezzz/rfvp@f60d8660`](https://github.com/xmoezzz/rfvp/commit/f60d8660d800fe16a4da485ef50e010e7b1ec2e5) 加入，存在于上游基线 `af557db750c7833274f22a6d82b0dc33cdea2f85`；二进制按上游原样随核心发布。
+固定版本见 `Cargo.lock`。文件级变化与覆盖范围见随核心分发的 fork `crates/shinki-emu-rfvp/MODIFICATIONS.md` 和 `THIRD_PARTY_NOTICES.md`。原生字体构造沿用上游四个字体文件，由 [`xmoezzz/rfvp@f60d8660`](https://github.com/xmoezzz/rfvp/commit/f60d8660d800fe16a4da485ef50e010e7b1ec2e5) 引入。字体不属于代码的 MPL-2.0 授权。公开分发前按实际交付的核心与内含该核心的宿主核对上游授权的适用范围及随包声明；本说明不授予新的字体许可。
 
 ## KrKr native development bundle
 

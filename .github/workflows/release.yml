@@ -1,5 +1,5 @@
 name: Component release
-# Manually select components. Preparing packages never publishes by default.
+# Manually prepare selected components. Publication uses reviewed artifacts locally.
 on:
   workflow_dispatch:
     inputs:
@@ -9,12 +9,8 @@ on:
       components:
         description: 'Comma-separated manager/plugin_ids (case-sensitive), or all supported components'
         required: true
-      prepare_only:
-        description: 'Prepare and retain every selected platform without publishing; audit actual artifacts before a separate publication'
-        type: boolean
-        default: true
       source_commit:
-        description: 'Optional exact lowercase 40-hex product SHA for prepare-only; omit to use the workflow commit'
+        description: 'Optional exact lowercase 40-hex product SHA; omit to use the workflow commit'
         type: string
         required: false
       release_scope:
@@ -22,6 +18,10 @@ on:
         type: choice
         options: [all, windows-android]
         default: all
+      upload_packages:
+        description: Confirm redistribution rights for all uploaded packages when preparing on the public repository
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
@@ -36,6 +36,11 @@ jobs:
       local_manager: ${{ steps.select.outputs.local_manager }}
       source_commit: ${{ steps.select.outputs.source_commit }}
     steps:
+      - name: Require permission to upload binaries on the public repository
+        if: github.event.repository.private != true && inputs.upload_packages != true
+        run: |
+          echo "::error::Workflow artifacts are downloadable by readers of the public repository. Use local preparation or confirm redistribution rights with upload_packages=true."
+          exit 1
       # The inventory needs the cpal submodule for workspace resolution, not LFS payloads.
       - uses: actions/checkout@v7
         with:
@@ -47,17 +52,14 @@ jobs:
         env:
           INPUT_COMPONENTS: ${{ inputs.components }}
           INPUT_VERSION: ${{ inputs.version }}
-          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
           EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit || github.sha }}
-          PREPARE_ONLY: ${{ inputs.prepare_only }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           if ($env:EXPECTED_SOURCE_COMMIT -cnotmatch '^[0-9a-f]{40}$') { throw 'source_commit must be an exact lowercase 40-hex product SHA' }
-          if ($env:INPUT_SOURCE_COMMIT -and $env:PREPARE_ONLY -ne 'true') { throw 'An explicit source_commit requires prepare_only=true' }
           $sourceCommit = (git rev-parse HEAD).Trim()
           if ($sourceCommit -cne $env:EXPECTED_SOURCE_COMMIT) { throw 'Checked-out product SHA differs from the selected source_commit' }
           "source_commit=$sourceCommit" >> $env:GITHUB_OUTPUT
-          "Workflow dispatch SHA: $env:GITHUB_SHA; actual product/source SHA: $sourceCommit; scope=$env:RELEASE_SCOPE; prepare_only=$env:PREPARE_ONLY" >> $env:GITHUB_STEP_SUMMARY
+          "Workflow dispatch SHA: $env:GITHUB_SHA; actual product/source SHA: $sourceCommit; scope=$env:RELEASE_SCOPE" >> $env:GITHUB_STEP_SUMMARY
           $localManager = $false
           $matrixArguments = @('xtask', 'matrix', '--json', '--ci')
           if ($env:RELEASE_SCOPE -ne 'all') {
@@ -216,35 +218,24 @@ jobs:
           bash build/ci/ios-device-signing.sh cargo xtask release --component manager --target aarch64-apple-ios --version "$VERSION" --scope "$RELEASE_SCOPE"
       - uses: actions/upload-artifact@v7
         with:
-          # Component ids and triples never contain '@', so publish can select one component.
+          # Component ids and triples never contain '@', so handoff can select one component.
           name: release-files-${{ matrix.component }}@${{ matrix.target }}
           path: .work/release/
           include-hidden-files: true
           if-no-files-found: error
-  publish:
+  handoff:
     needs: [select, build]
-    # Verify only the selected component's prepared rows, independently of other builds.
-    if: ${{ !cancelled() && inputs.prepare_only == false && needs.select.result == 'success' }}
+    if: ${{ !cancelled() && needs.select.result == 'success' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.components) }}
-    concurrency:
-      group: publish-${{ matrix.component }}-${{ matrix.version }}
-      cancel-in-progress: false
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
-      pull-requests: write
       actions: read
     env:
       COMPONENT: ${{ matrix.component }}
       VERSION: ${{ matrix.version }}
     steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.select.outputs.source_commit }}
-          submodules: true
-      - run: rustup show
       - uses: actions/download-artifact@v8
         with:
           pattern: release-files-${{ matrix.component }}@*
@@ -262,8 +253,8 @@ jobs:
           missing=$(jq -r --arg c "$COMPONENT" '.include[] | select(.component == $c) | .target' <<<"$MATRIX" \
             | while IFS= read -r target; do test -f ".work/release/$RELEASE_TAG/$target/release.json" || printf '%s ' "$target"; done)
           if test -n "$missing"; then
-            echo "- **$COMPONENT $VERSION skipped**: build rows failed or were cancelled: $missing" >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::$COMPONENT not published; build rows failed or were cancelled: $missing"
+            echo "- **$COMPONENT $VERSION incomplete**: build rows failed or were cancelled: $missing" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::$COMPONENT missing prepared build rows: $missing"
             exit 1
           fi
           while IFS= read -r target; do
@@ -286,31 +277,14 @@ jobs:
             echo "Manager $VERSION requires a DevEco-signed OHOS package."
             echo "Use a run without a source_commit override. Compare \`gh run view $GITHUB_RUN_ID --json headSha --jq .headSha\` with \`git rev-parse HEAD\` before combining artifacts."
             echo "Download this run's release-files-manager@* artifacts and merge their contents into .work/release/."
-            echo "With DevEco and cargo-about installed, prepare and publish from the same checkout:"
+            echo "With DevEco and cargo-about installed, prepare the HAP from the same checkout:"
             echo '```sh'
             echo "cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version $VERSION"
-            echo "cargo xtask release --component manager --version $VERSION --scope all --publish"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Summarize prepare-only run
-        if: inputs.prepare_only == true
+      - name: Summarize verified handoff
         env:
           SOURCE_COMMIT: ${{ needs.select.outputs.source_commit }}
         run: |
-          echo "Prepared $COMPONENT for scope $RELEASE_SCOPE from product SHA $SOURCE_COMMIT (workflow SHA $GITHUB_SHA). Download the release-files artifacts for inspection. This run does not create a tag or public release." >> "$GITHUB_STEP_SUMMARY"
-      - name: Publish every prepared platform as one Release
-        id: publish
-        if: inputs.prepare_only == false && (matrix.component != 'manager' || needs.select.outputs.local_manager != 'true')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: cargo xtask release --component "$COMPONENT" --version "$VERSION" --scope "$RELEASE_SCOPE" --publish
-      - name: Summary
-        if: always() && steps.publish.outcome != 'skipped'
-        env:
-          OUTCOME: ${{ steps.publish.outcome }}
-        run: |
-          if test "$OUTCOME" = success; then
-            echo "- $COMPONENT $VERSION published" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- **$COMPONENT $VERSION publish failed**: see the publish step log" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "Prepared $COMPONENT $VERSION for scope $RELEASE_SCOPE from product SHA $SOURCE_COMMIT." >> "$GITHUB_STEP_SUMMARY"
+          echo 'Download the release-files artifacts for inspection. After reviewing the exact binaries and redistribution materials, publish locally with cargo xtask release --publish. This workflow does not create tags or releases.' >> "$GITHUB_STEP_SUMMARY"

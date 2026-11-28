@@ -85,7 +85,7 @@ Use `package --core <id>` to package a dynamic Android core for the selected ABI
 
 Android packaging checks the production certificate when release-signed, the package ID, `versionName`, `versionCode` and `minSdk` 28. `release.yml` derives `SHINKI_EMU_ANDROID_VERSION_CODE` from `github.run_number`. Keep the existing workflow file and sequence; a reset to 1 can block upgrades. Published APKs must use increasing codes.
 
-`release --dry-run` prints the plan. `release --target` builds and prepares an asset in `.work/release/<tag>/<target>/`; `release --publish` uploads staged assets and opens the core catalog PR when applicable. Pass an explicit `--version` for Manager and in-tree cores, and omit it for external cores. The catalog stores SHA-256 and size for each public asset. Game acceptance and distribution review are maintainer decisions, not build inputs.
+`release --dry-run` prints the plan. `release --target` builds and prepares an asset in `.work/release/<tag>/<target>/`. Hosted release runs only prepare and verify the selected artifacts. `release --publish` uploads the reviewed artifacts from the same checkout and opens the core catalog PR when applicable. Pass an explicit `--version` for Manager and in-tree cores, and omit it for external cores. The catalog stores SHA-256 and size for each binary. Gameplay and license review do not block builds.
 
 Manual `ci.yml` dispatch accepts `since`, using the existing
 `cargo xtask matrix --json --ci --since <ref>` input classifier. The matrix
@@ -101,6 +101,19 @@ Changing a core also selects the iOS Manager rows that package it as a Framework
 For a Windows/Android-only release, use `release_scope=windows-android` on `release.yml` or `--scope windows-android` on the local release commands. Plan, prepare and publish with the same scope. This scope does not change product support.
 
 For an all-platform Manager release, use one successful hosted release run without a `source_commit` override. Match its `headSha` to local `HEAD`, merge that run's `release-files-manager@*` artifacts under `.work/release/`, prepare the OHOS HAP with DevEco and publish from that checkout. See [the commands](../docs/en/release-runbook.md#package-and-release).
+
+### Redistribution review
+
+Before publishing, put `redistribution.zip` and its local `redistribution.json` receipt in `.work/release/<tag>/`. The ZIP must contain `SOURCE.md` at its root. List each prepared binary's actual components, license notices and exact corresponding source. Include source and relink materials as required, with instructions for rebuilding or replacing the shipped version on each affected target. Where the license permits source by reference, verify anonymous access to the exact trees or archives, not just the repository homepage. Keep restricted SDKs, game files, signing credentials and private grants out of the published ZIP; retain private grants separately and check that they cover the actual distribution.
+
+The receipt has four fields:
+
+- `source_commit`: the 40-character product commit from the prepared `release.json` records.
+- `packages`: an object mapping every binary archive filename to its reviewed SHA-256, taken from the matching `release.json` and confirmed against the actual file.
+- `archive`: `name` (`redistribution.zip`), `sha256` (the reviewed ZIP's digest), and `size` (its byte count).
+- `attachments`: an array of additional public ZIPs named `redistribution-*.zip`, each with `name`, `sha256`, and `size`. Use separate per-target source or relink archives to stay within the hosting asset limit; name them in `SOURCE.md`. Use `[]` when all material is in `redistribution.zip`.
+
+Update the receipt only after reviewing the changed files. `--publish` rejects missing or mismatched materials before contacting GitHub, uploads every reviewed ZIP to the draft, then makes the release public. The hash check does not determine whether the license terms have been met.
 
 Tool behavior tests: `cargo test --locked -p xtask -p shinki-emu-build`. Tests compile their own public synthetic shared libraries; no game installation or private data is used.
 

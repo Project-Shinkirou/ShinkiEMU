@@ -52,11 +52,13 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 
 每份发布记录都要标明本次发布的产品提交。记录来自其他提交，或未记录提交时，需要重新打包。
 
-实玩和 QA 结果供维护者发版时参考，不阻断编译。上传前按实际二进制核对许可证、对应源码和重链接材料，包括 [Ren’Py 的分发要求](../licenses/renpy/README.md)。构建成功不等于具备公开分发条件。
+实玩和 QA 结果供维护者发版时参考，不阻断编译。按实际二进制核对许可、对应源码和重链接材料，包括 [Ren’Py 的分发要求](../licenses/renpy/README.md)。把可公开的材料放进 `.work/release/<tag>/redistribution.zip`。根目录的 `SOURCE.md` 按产物列明许可、精确源码来源和适用的替换或重链接步骤。不要打包未获分发许可的 SDK、游戏资源或密钥。发布工具校验[绑定到本次二进制的收据](../../xtask/README.md#redistribution-review)，上传材料后才公开。
 
-[发布工作流](../../.github/workflows/release.yml)只接受手动触发，推送标签不发版。默认 `prepare_only=true`，只准备所选组件；发布须显式设为 `false`，或对已准备的产物执行 `cargo xtask release --publish`。只有同时选择 Manager 和自研核心时才共用 `version`。
+[发布工作流](../../.github/workflows/release.yml)只接受手动触发，负责准备所选组件；由维护者核对实际产物后，在本地执行 `cargo xtask release --publish`。只有同时选择 Manager 和自研核心时才共用 `version`。
 
-仅准备产物时，可以用 `source_commit` 指定确切的 40 位产品提交。此参数只在 `prepare_only=true` 时有效。指定后，触发工作流的 SHA 与产品 SHA 分开记录。
+公有仓库的 Actions 产物不是私测渠道。只有已核对所选二进制的上传许可，才使用 `upload_packages=true`；否则在本地或私有仓库准备。
+
+可以用 `source_commit` 指定确切的 40 位产品提交。指定后，触发工作流的 SHA 与产品 SHA 分开记录。
 
 发布全平台 Manager 时，选一次成功且未覆盖 `source_commit` 的运行，将运行编号设为 `RUN_ID`。确认下面两条命令输出的提交一致，再下载产物：
 
@@ -68,7 +70,7 @@ gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/releas
 
 所有受支持的目标都必须有可发布的包。调试签名的 Android APK 不能替代正式包。
 
-下载会为每份产物创建一个目录。将其中的 `<tag>/<target>/` 合并到 `.work/release/<tag>/`。配置好 DevEco、签名目录和 `cargo-about`，在同一份工作副本中制作 HAP 并发布。`VERSION` 设为该次运行的产品版本：
+下载会为每份产物创建一个目录。将其中的 `<tag>/<target>/` 合并到 `.work/release/<tag>/`。配置好 DevEco、签名目录和 `cargo-about`，用同一份工作副本制作 HAP，核对全部产物并准备再分发材料，再执行发布。`VERSION` 设为该次运行的产品版本：
 
 ```sh
 cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version "$VERSION"

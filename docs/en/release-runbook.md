@@ -56,11 +56,13 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 
 Each release record must name the product commit being published. Prepare the package again if the record is from a different commit or does not record a commit.
 
-Before manually distributing binaries, verify the applicable notices, corresponding source and relinking material, including the [Ren’Py requirements](../licenses/renpy/README.md). Gameplay and QA results inform the maintainer’s decision and never prevent compilation.
+Before publishing, review the actual binaries against the applicable notices, corresponding source and relinking requirements, including the [Ren’Py requirements](../licenses/renpy/README.md). Stage the reviewed material and [its receipt](../../xtask/README.md#redistribution-review) next to the prepared target directories. Gameplay and QA inform the maintainer’s decision and never prevent compilation.
 
-[The release workflow](../../.github/workflows/release.yml) runs only on manual dispatch; tags do not trigger it. By default (`prepare_only=true`) it prepares only selected components, without publishing. Explicitly set `prepare_only=false` or use `cargo xtask release --publish` to publish. Manager and in-tree cores share `version` only when selected together. Use `release_scope=windows-android` to narrow the scope.
+[The release workflow](../../.github/workflows/release.yml) runs only on manual dispatch and prepares the selected components without publishing. Maintainers publish the reviewed artifacts locally with `cargo xtask release --publish`. Manager and in-tree cores share `version` only when selected together. Use `release_scope=windows-android` to narrow the scope.
 
-For a prepare-only workflow, `source_commit` may specify the exact 40-character product commit. It is valid only with `prepare_only=true`. The workflow dispatch SHA is not the product SHA when this override is used.
+Artifacts from a public repository are downloadable by its readers. Set `upload_packages=true` only after confirming that every selected binary may be uploaded. Otherwise prepare locally or in a private repository.
+
+Set `source_commit` to select an exact 40-character product commit. The workflow dispatch SHA is not the product SHA when this override is used.
 
 For an all-platform Manager release, use one successful run with no `source_commit` override. Set `RUN_ID` to that run's ID; compare the two commit SHAs before downloading:
 
@@ -72,7 +74,7 @@ gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/releas
 
 All supported targets must have publishable packages. A debug-signed Android APK cannot stand in for the production APK.
 
-The download creates one directory per artifact. Merge their `<tag>/<target>/` directories into `.work/release/<tag>/`. With DevEco, the signing directory and `cargo-about` configured, prepare the HAP and publish from that checkout. Set `VERSION` to the run's product version:
+The download creates one directory per artifact. Merge their `<tag>/<target>/` directories into `.work/release/<tag>/`. With DevEco, the signing directory and `cargo-about` configured, prepare the HAP from that checkout, then review every binary and stage the redistribution materials before publishing. Set `VERSION` to the run's product version:
 
 ```sh
 cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version "$VERSION"

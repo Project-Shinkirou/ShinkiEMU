@@ -506,8 +506,8 @@ pub fn prepare(
     Ok(())
 }
 
-fn asset_name<'a>(record: &'a Value, key: &str) -> Result<&'a str> {
-    let name = record[key]["name"].as_str().context("release asset name")?;
+fn asset_name(asset: &Value) -> Result<&str> {
+    let name = asset["name"].as_str().context("release asset name")?;
     package::portable(name)?;
     if name.contains('/') {
         bail!("{name}: release asset name must be a filename");
@@ -515,18 +515,78 @@ fn asset_name<'a>(record: &'a Value, key: &str) -> Result<&'a str> {
     Ok(name)
 }
 
-fn verify_asset(directory: &Path, record: &Value, key: &str) -> Result<()> {
-    let name = asset_name(record, key)?;
-    let expected = record[key]["sha256"]
-        .as_str()
-        .context("release asset SHA256")?;
+fn verify_asset(directory: &Path, asset: &Value) -> Result<PathBuf> {
+    let name = asset_name(asset)?;
+    let expected = asset["sha256"].as_str().context("release asset SHA256")?;
     let path = directory.join(name);
     if package::sha256(&path)? != expected
-        || record[key]["size"].as_u64() != Some(fs::metadata(&path)?.len())
+        || asset["size"].as_u64() != Some(fs::metadata(&path)?.len())
     {
         bail!("{name}: release asset hash differs from prepared record");
     }
-    Ok(())
+    Ok(path)
+}
+
+/// Bind maintainer-reviewed redistribution materials to the exact binary set.
+fn redistribution_assets(
+    root: &Path,
+    source_commit: &str,
+    records: &[(PathBuf, Value)],
+) -> Result<Vec<PathBuf>> {
+    let receipt = root.join("redistribution.json");
+    let review: Value = serde_json::from_slice(&fs::read(&receipt).with_context(|| {
+        format!(
+            "{}: publication requires reviewed redistribution materials",
+            receipt.display()
+        )
+    })?)
+    .with_context(|| format!("reading {}", receipt.display()))?;
+    let packages = review["packages"]
+        .as_object()
+        .context("reviewed packages")?;
+    if review["source_commit"] != source_commit || packages.len() != records.len() {
+        bail!(
+            "{} does not match the prepared release binaries",
+            receipt.display()
+        );
+    }
+    for (_, record) in records {
+        let name = asset_name(&record["archive"])?;
+        if packages.get(name) != Some(&record["archive"]["sha256"]) {
+            bail!("{name}: binary archive is not covered by the redistribution review");
+        }
+    }
+    if asset_name(&review["archive"])? != "redistribution.zip" {
+        bail!("{} must identify redistribution.zip", receipt.display());
+    }
+    let archive = verify_asset(root, &review["archive"])?;
+    let mut zip = zip::ZipArchive::new(fs::File::open(&archive)?)?;
+    let index = zip
+        .by_name("SOURCE.md")
+        .context("redistribution.zip requires SOURCE.md")?;
+    if !index.is_file() || index.size() == 0 {
+        bail!("redistribution.zip requires a nonempty SOURCE.md");
+    }
+    let attachments = review["attachments"]
+        .as_array()
+        .context("redistribution attachments (may be empty)")?;
+    let mut assets = Vec::with_capacity(1 + attachments.len());
+    assets.push(archive);
+    for attachment in attachments {
+        let name = asset_name(attachment)?;
+        if !name.starts_with("redistribution-") || !name.ends_with(".zip") {
+            bail!("redistribution attachment must be named redistribution-*.zip: {name}");
+        }
+        let path = verify_asset(root, attachment)?;
+        if assets
+            .iter()
+            .any(|asset| asset.file_name() == path.file_name())
+        {
+            bail!("duplicate redistribution attachment: {name}");
+        }
+        assets.push(path);
+    }
+    Ok(assets)
 }
 
 struct PreparedRelease {
@@ -584,13 +644,13 @@ fn collect_records(
                 id.commit
             );
         }
-        verify_asset(&directory, &record, "archive")?;
+        let archive = verify_asset(&directory, &record["archive"])?;
         if ios {
             let manifest: crate::apple::ios_frameworks::Manifest =
                 serde_json::from_value(record["ios"].clone())
                     .context("iOS release requires the exact-head Framework manifest")?;
             manifest.validate(inv, &t.triple, &id.version, &id.commit)?;
-            manifest.verify_release_archive(&directory.join(asset_name(&record, "archive")?))?;
+            manifest.verify_release_archive(&archive)?;
         }
         if component == "manager"
             && t.platform == "android"
@@ -621,6 +681,7 @@ pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
     let local_manager = scope.local_manager(inv, component);
     let tag = id.tag.as_str();
     let PreparedRelease { records, blocked } = collect_records(inv, &id, component, scope)?;
+    let redistribution = redistribution_assets(&id.root, &id.commit, &records)?;
     let artifacts = records
         .iter()
         .map(|(_, r)| {
@@ -644,6 +705,7 @@ pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
     } else {
         notes
     };
+    notes.push_str("\nRedistribution materials: `redistribution.zip` (start with `SOURCE.md`).\n");
     if component == "manager"
         && records
             .iter()
@@ -666,13 +728,15 @@ pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
     // A new draft records the run's commit; publishing it creates the tag there.
     let release = match existing {
         Some(draft) => {
-            if scope == Scope::WindowsAndroid {
-                let assets = draft["assets"].as_array().context("draft assets")?;
-                for asset in assets {
-                    let name = asset["name"].as_str().context("draft asset name")?;
-                    if !records.iter().any(|(_, record)| record["archive"]["name"] == name) {
-                        bail!("draft {tag} already has an asset outside scope: {name}");
-                    }
+            let assets = draft["assets"].as_array().context("draft assets")?;
+            for asset in assets {
+                let name = asset["name"].as_str().context("draft asset name")?;
+                if !redistribution
+                    .iter()
+                    .any(|path| path.file_name().and_then(|part| part.to_str()) == Some(name))
+                    && !records.iter().any(|(_, record)| record["archive"]["name"] == name)
+                {
+                    bail!("draft {tag} already has an unreviewed asset: {name}");
                 }
             }
             draft
@@ -690,6 +754,9 @@ pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
             &directory.join(record["archive"]["name"].as_str().context("core archive")?),
         )?;
         assets.push((record, asset));
+    }
+    for asset in redistribution {
+        gh.upload(&release, &asset)?;
     }
     gh.request(
         reqwest::Method::PATCH,
@@ -890,5 +957,65 @@ mod tests {
                 .contains("requires a release-signed Android APK"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn redistribution_material_must_match_every_published_package() {
+        let out = tempfile::tempdir().unwrap();
+        let root = out.path();
+        let commit = "1".repeat(40);
+        let arm_hash = "2".repeat(64);
+        let x64_hash = "3".repeat(64);
+        let packages = [
+            (
+                root.to_owned(),
+                json!({"archive":{"name":"core-arm.zip","sha256":arm_hash}}),
+            ),
+            (
+                root.to_owned(),
+                json!({"archive":{"name":"core-x64.zip","sha256":x64_hash}}),
+            ),
+        ];
+        assert!(redistribution_assets(root, &commit, &packages).is_err());
+
+        let index = root.join("SOURCE.md");
+        fs::write(&index, "Matching source and rebuild instructions").unwrap();
+        let archive = root.join("redistribution.zip");
+        package::zip_entries(&[(index, "SOURCE.md".to_owned())], &archive).unwrap();
+        let attachment = root.join("redistribution-arm-sources.zip");
+        fs::copy(&archive, &attachment).unwrap();
+        let mut review = json!({
+            "source_commit": commit,
+            "packages": {"core-arm.zip": arm_hash, "core-x64.zip": x64_hash},
+            "archive": {
+                "name": "redistribution.zip",
+                "sha256": package::sha256(&archive).unwrap(),
+                "size": fs::metadata(&archive).unwrap().len(),
+            },
+            "attachments": [{
+                "name": "redistribution-arm-sources.zip",
+                "sha256": package::sha256(&attachment).unwrap(),
+                "size": fs::metadata(&attachment).unwrap().len(),
+            }],
+        });
+        let write_review = |review: &Value| {
+            fs::write(
+                root.join("redistribution.json"),
+                serde_json::to_vec(review).unwrap(),
+            )
+            .unwrap();
+        };
+        write_review(&review);
+        assert_eq!(
+            redistribution_assets(root, &commit, &packages).unwrap(),
+            [archive, attachment.clone()]
+        );
+        review["packages"]["core-x64.zip"] = json!(arm_hash);
+        write_review(&review);
+        assert!(redistribution_assets(root, &commit, &packages).is_err());
+        review["packages"]["core-x64.zip"] = json!(x64_hash);
+        write_review(&review);
+        fs::write(&attachment, b"changed after review").unwrap();
+        assert!(redistribution_assets(root, &commit, &packages).is_err());
     }
 }

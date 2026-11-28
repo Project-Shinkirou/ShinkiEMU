@@ -52,9 +52,11 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 
 各リリース記録には公開対象の製品コミットが必要です。別のコミットで準備した場合や記録にコミットがない場合は、パッケージを作り直してください。
 
-[リリースワークフロー](../../.github/workflows/release.yml)は手動でのみ実行され、タグでは起動しません。既定の `prepare_only=true` では選んだコンポーネントの配布物を準備するだけです。公開は `prepare_only=false` または `cargo xtask release --publish` で明示的に行います。公開前に実際の配布物のライセンス、対応ソース、再リンク資料を確認してください。プレイ検証はビルドを妨げません。
+[リリースワークフロー](../../.github/workflows/release.yml)は手動でのみ実行され、選んだコンポーネントの配布物を準備します。公開は、実際の配布物のライセンス、対応ソース、再リンク資料を確認した後、ローカルで `cargo xtask release --publish` を実行して行います。[配布資料と記録](../../xtask/README.md#redistribution-review)も一緒に用意してください。プレイ検証はビルドを妨げません。
 
-準備のみの場合は `source_commit` に対象製品の正確な 40 桁のコミットを指定できます。この入力を使うには `prepare_only=true` が必要です。指定時はワークフローを起動した SHA と製品の SHA を区別してください。
+公開リポジトリの Actions 成果物は、そのリポジトリを閲覧できる利用者が取得できます。選んだすべてのバイナリのアップロードが許可されている場合に限り `upload_packages=true` を指定してください。それ以外はローカルまたは非公開リポジトリで準備します。
+
+`source_commit` に対象製品の正確な 40 桁のコミットを指定できます。指定時はワークフローを起動した SHA と製品の SHA を区別してください。
 
 全プラットフォーム向け Manager の公開には、`source_commit` を上書きしていない成功実行を 1 件使います。実行 ID を `RUN_ID` に設定し、2 つのコミット SHA が一致することを確認してからダウンロードします。
 
@@ -66,7 +68,7 @@ gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/releas
 
 サポート対象のすべてに公開可能なパッケージが必要です。デバッグ署名の Android APK は正式版の代わりに使えません。
 
-ダウンロードすると成果物ごとにディレクトリが作られます。その中の `<tag>/<target>/` を `.work/release/<tag>/` にまとめます。DevEco、署名ディレクトリ、`cargo-about` を用意し、同じ作業ツリーで HAP を作って公開します。`VERSION` にはその実行の製品バージョンを設定します。
+ダウンロードすると成果物ごとにディレクトリが作られます。その中の `<tag>/<target>/` を `.work/release/<tag>/` にまとめます。DevEco、署名ディレクトリ、`cargo-about` を用意し、同じ作業ツリーで HAP を作ります。すべての配布物と再配布資料を確認してから公開してください。`VERSION` にはその実行の製品バージョンを設定します。
 
 ```sh
 cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version "$VERSION"
